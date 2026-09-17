@@ -1,0 +1,66 @@
+{
+  "manifest_version": 3,
+  "name": "Kowari",
+  "version": "0.4.0",
+  "description": "A small agent harness: sandboxed storage, allow-listed HTTP, and a human approval gate on every write.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "kowari@local",
+      "strict_min_version": "128.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
+  },
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://api.venice.ai/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ],
+  "background": {
+    "scripts": [
+      "bg.js"
+    ],
+    "type": "module"
+  },
+  "sidebar_action": {
+    "default_panel": "panel.html",
+    "default_title": "Kowari",
+    "open_at_install": false,
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "action": {
+    "default_title": "Kowari",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

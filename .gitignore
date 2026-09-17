@@ -1,0 +1,21 @@
+# build output
+dist/
+*.zip
+*.xpi
+
+# node
+node_modules/
+package-lock.json
+
+# python
+__pycache__/
+*.pyc
+
+# editors and OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# the mascot rasters and bundle icons are committed on purpose: build.py copies
+# them, so a fresh checkout must have them. Regenerate with `python3 assets/mascot.py`.

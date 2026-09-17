@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a tool, a behaviour, or a change to the approval gate.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two things are not negotiable in this project, so please frame requests around
+        them: the agent has no direct write tool, and platform differences live in
+        `core/api.js`.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that the harness makes hard or impossible?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would change
+      description: If it adds a tool, say whether it reads or proposes, and what the model would see.
+    validations:
+      required: true
+  - type: dropdown
+    id: gate
+    attributes:
+      label: Does this touch the approval gate?
+      options:
+        - "No — reads, UI, docs, build"
+        - "Yes — it would let the agent change state more directly"
+    validations:
+      required: true

@@ -1,0 +1,29 @@
+{
+  "name": "kowari",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "A tiny browser-agent harness with a human approval gate on every write.",
+  "license": "MIT",
+  "keywords": [
+    "agent",
+    "llm",
+    "browser-extension",
+    "manifest-v3",
+    "chrome",
+    "firefox",
+    "human-in-the-loop",
+    "approval"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "python3 build.py",
+    "mascot": "python3 assets/mascot.py",
+    "test": "python3 build.py && node test/loop.test.mjs && node test/proposals.test.mjs && node test/crossbrowser.test.mjs",
+    "test:loop": "node test/loop.test.mjs",
+    "test:proposals": "node test/proposals.test.mjs",
+    "test:crossbrowser": "python3 build.py && node test/crossbrowser.test.mjs"
+  }
+}

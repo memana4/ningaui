@@ -1,0 +1,56 @@
+name: Bug report
+description: Something in the harness, the queue, the panel or a bundle is wrong.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. If this is a security issue, use the Security tab
+        instead — see SECURITY.md.
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      options:
+        - Chrome / Chromium
+        - Firefox
+        - Firefox ESR
+        - Both
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Kowari version
+      description: From the manifest, or the zip filename.
+      placeholder: "0.4.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Model backend
+      options:
+        - Browser built-in model
+        - OpenAI-compatible endpoint (local)
+        - OpenAI-compatible endpoint (remote)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got. Include the transcript lines if you have them.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Smallest reproduction
+      description: The task you gave the agent, and the allowlist entries in play.
+  - type: textarea
+    id: journal
+    attributes:
+      label: Journal excerpt (optional)
+      description: The panel keeps a per-run journal. A few lines around the failure help a lot.
+      render: text

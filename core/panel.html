@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kowari</title>
+<style>
+  :root{--bg:#0c0f12;--panel:#141a1f;--line:#26313a;--text:#e7edf1;--dim:#8ea0ac;--ok:#4ec97a;--warn:#e2622c;--accent:#e0b041}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
+  h1{font-size:14px;margin:0;letter-spacing:-.2px}
+  h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:14px 0 6px}
+  .state{font-size:11px;padding:2px 7px;border-radius:10px;background:#1d262d;color:var(--dim)}
+  .state.running{background:#2b2416;color:var(--accent)}
+  .state.done,.state.awaiting_approval{background:#14281c;color:var(--ok)}
+  .state.error,.state.model_error,.state.interrupted{background:#2b1713;color:var(--warn)}
+  section{padding:8px 12px;border-bottom:1px solid var(--line)}
+  label{display:block;font-size:11px;color:var(--dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:.05em}
+  textarea,input,select{width:100%;padding:7px 8px;background:#101619;border:1px solid var(--line);color:var(--text);border-radius:5px;font:inherit}
+  button{margin-top:8px;padding:7px 12px;background:var(--accent);color:#191308;border:0;border-radius:5px;font-weight:700;cursor:pointer}
+  button.ghost{background:transparent;color:var(--dim);border:1px solid var(--line)}
+  button.mini{padding:3px 8px;font-size:11px;font-weight:500;margin:0 0 0 6px}
+  .row{display:flex;gap:8px}.row button{flex:1}
+  #transcript,#store{max-height:220px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+  .line{padding:2px 0;border-bottom:1px dotted #1e272e;word-break:break-word;white-space:pre-wrap}
+  .line.tool_call{color:var(--accent)} .line.tool_result{color:var(--dim)}
+  .line.final,.line.ok{color:var(--ok)} .line.warn,.line.model_error,.line.parse_error{color:var(--warn)}
+  .line.start{color:var(--text);font-weight:600}
+  .dim{color:var(--dim)}
+  .note{font-size:11px;color:var(--dim)}
+  code{font-size:11px;color:var(--dim);word-break:break-all}
+  .prop{border:1px solid var(--line);border-radius:5px;padding:6px 8px;margin-bottom:5px;cursor:pointer;background:#101619}
+  .prop.sel{border-color:var(--accent);background:#171d22}
+  .prow{font-size:11.5px} .prat{font-size:11.5px;margin-top:2px}
+  .pdiff{font-size:11px;color:var(--dim);margin-top:3px;font-family:ui-monospace,Menlo,monospace;word-break:break-word}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+  .chip{padding:3px 8px;font-size:11px;font-weight:500;background:transparent;color:var(--dim);border:1px solid var(--line);border-radius:10px;margin:0}
+  .chip:hover{color:var(--text);border-color:var(--accent)}
+  footer{padding:10px 12px;color:var(--dim);font-size:11px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Kowari</h1>
+  <span id="state" class="state idle">idle</span>
+</header>
+
+<section>
+  <div class="line dim" id="env">detecting environment…</div>
+  <div class="line">host permissions: <span id="permstate" class="state error">unknown</span>
+    <button id="grant" class="mini ghost">grant</button></div>
+  <code id="permorigins"></code>
+  <p class="note" id="modelhint"></p>
+</section>
+
+<section>
+  <label for="task">Task</label>
+  <textarea id="task" rows="3" placeholder="Read the current state, then propose what should change."></textarea>
+  <div class="row">
+    <button id="run">Run</button>
+    <button id="stop" class="ghost">Stop</button>
+  </div>
+</section>
+
+<section>
+  <h2>Proposals to review (<span id="pendingcount">0</span>)<button id="approveAllStorage" class="mini ghost">approve all storage</button><button id="clearDecided" class="mini ghost">clear decided</button></h2>
+  <div id="review"></div>
+  <label for="reason">Reason — used when you decline; the agent reads it next run</label>
+  <input id="reason" placeholder="why not">
+  <div class="chips">
+    <button class="chip" data-reason="wrong value">wrong value</button>
+    <button class="chip" data-reason="wrong target">wrong target</button>
+    <button class="chip" data-reason="duplicate">duplicate</button>
+    <button class="chip" data-reason="not now">not now</button>
+    <button class="chip" data-reason="too risky">too risky</button>
+  </div>
+  <p class="note">Keys: <b>↑/↓</b> select · <b>a</b> approve · <b>d</b> decline with the reason · <b>s</b> skip · <b>r</b> refresh</p>
+  <div id="decided"></div>
+</section>
+
+<section>
+  <h2>Transcript</h2>
+  <div id="transcript"></div>
+</section>
+
+<section>
+  <h2>Agent storage (<span id="storecount">0</span>)<button id="refresh" class="mini ghost">refresh</button><button id="clear" class="mini ghost">clear</button></h2>
+  <div id="store"></div>
+</section>
+
+<section>
+  <h2>Settings</h2>
+  <label for="backend">Model backend</label>
+  <select id="backend">
+    <option value="nano">Browser built-in model — on-device, no key (Chrome only)</option>
+    <option value="openai">OpenAI-compatible endpoint — local or private</option>
+  </select>
+  <label for="baseUrl">Base URL</label>
+  <input id="baseUrl" placeholder="http://localhost:11434/v1">
+  <label for="model">Model</label>
+  <input id="model" placeholder="e.g. qwen3, or a private model id">
+  <label for="apiKey">API key — stored locally, sent only to your endpoint</label>
+  <input id="apiKey" type="password" placeholder="leave empty for local models">
+  <label for="allowlist">Allowed URL prefixes — one per line; the only endpoints the agent may reach</label>
+  <textarea id="allowlist" rows="3"></textarea>
+  <label for="persona">Persona (optional)</label>
+  <input id="persona" placeholder="a librarian who keeps careful notes">
+  <button id="save">Save settings</button>
+  <p class="note">host permissions declared in the manifest:<br><code id="hosts"></code></p>
+</section>
+
+<footer>seven tools · one loop · no page access · no writes without your approval</footer>
+<script type="module" src="panel.js"></script>
+</body>
+</html>

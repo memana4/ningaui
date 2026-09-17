@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Kowari">
+  <title>Kowari</title>
+  <rect width="128" height="128" rx="26" fill="#141A1F"/>
+  <rect x="3" y="3" width="122" height="122" rx="23" fill="none" stroke="#243039" stroke-width="1"/>
+  <path d="M 52 100 L 38 110 L 22 106 L 13 92 L 14 74 L 22 62" fill="none" stroke="#E0B041" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 22 62 L 26 56 L 31 51" fill="none" stroke="#2B2018" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <ellipse cx="65" cy="91" rx="23" ry="21" fill="#E0B041"/>
+  <ellipse cx="67" cy="108" rx="17" ry="6" fill="#C9973A"/>
+  <ellipse cx="72" cy="80" rx="26" ry="24" fill="#E0B041"/>
+  <ellipse cx="78" cy="86" rx="14" ry="14" fill="#F6E3B8"/>
+  <path d="M 84 64 L 86 76 L 88 86" fill="none" stroke="#E0B041" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <ellipse cx="89" cy="90" rx="7" ry="6" fill="#F6E3B8"/>
+  <ellipse cx="90" cy="59" rx="10" ry="11" fill="#E0B041"/>
+  <ellipse cx="88" cy="47" rx="16" ry="17" fill="#E0B041"/>
+  <polygon points="99,41 114,47 116,52 100,56" fill="#E0B041"/>
+  <ellipse cx="115" cy="48" rx="3" ry="3" fill="#2B2018"/>
+  <path d="M 102 57 L 108 56 L 112 54" fill="none" stroke="#2B2018" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <ellipse cx="86" cy="30" rx="10" ry="10" fill="#C9973A"/>
+  <ellipse cx="86" cy="30" rx="5" ry="5" fill="#F6E3B8"/>
+  <ellipse cx="96.5" cy="46.5" rx="4.5" ry="4.5" fill="#2B2018"/>
+  <ellipse cx="95.8" cy="45.3" rx="1.5" ry="1.5" fill="#FFFDF7"/>
+  <path d="M 56 58 L 63 82 L 70 107" fill="none" stroke="#2C6B96" stroke-width="7.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 56 58 L 63 82 L 70 107" fill="none" stroke="#4E9BD1" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 74 56 L 81 80 L 88 103" fill="none" stroke="#2C6B96" stroke-width="7.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M 74 56 L 81 80 L 88 103" fill="none" stroke="#4E9BD1" stroke-width="5.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <ellipse cx="68" cy="57" rx="6" ry="6" fill="#2C6B96"/>
+  <ellipse cx="68" cy="57" rx="4" ry="4" fill="#4E9BD1"/>
+  <ellipse cx="68" cy="57" rx="1.5" ry="1.5" fill="#141A1F"/>
+  <path d="M 68 52 L 70 32 L 74 3" fill="none" stroke="#4E9BD1" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
