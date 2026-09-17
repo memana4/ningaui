@@ -7,7 +7,8 @@
   :root{--bg:#0c0f12;--panel:#141a1f;--line:#26313a;--text:#e7edf1;--dim:#8ea0ac;--ok:#4ec97a;--warn:#e2622c;--accent:#e0b041}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-  header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
+  header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+  header img{flex:0 0 auto} header h1{flex:1}
   h1{font-size:14px;margin:0;letter-spacing:-.2px}
   h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:14px 0 6px}
   .state{font-size:11px;padding:2px 7px;border-radius:10px;background:#1d262d;color:var(--dim)}
@@ -41,6 +42,7 @@
 </head>
 <body>
 <header>
+  <img src="icons/icon-32.png" alt="" width="22" height="22" style="border-radius:6px">
   <h1>Kowari</h1>
   <span id="state" class="state idle">idle</span>
 </header>
