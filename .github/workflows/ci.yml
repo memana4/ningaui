@@ -32,28 +32,31 @@ jobs:
       - name: Agent loop and protocol
         run: node test/loop.test.mjs
 
-      - name: Approval gate invariants
-        run: node test/proposals.test.mjs
+      - name: Action log invariants
+        run: node test/actions.test.mjs
+
+      - name: Policy and earned autonomy
+        run: node test/policy.test.mjs
 
       - name: Cross-browser behaviour
         run: node test/crossbrowser.test.mjs
 
       - name: Regenerate the mascot and fail if the committed assets drift
         run: |
-          cp assets/kowari-512.png /tmp/before.png
+          cp assets/ningaui-512.png /tmp/before.png
           python3 assets/mascot.py
           python3 - <<'PY'
           import hashlib, pathlib, sys
           a = hashlib.sha256(pathlib.Path('/tmp/before.png').read_bytes()).hexdigest()
-          b = hashlib.sha256(pathlib.Path('assets/kowari-512.png').read_bytes()).hexdigest()
+          b = hashlib.sha256(pathlib.Path('assets/ningaui-512.png').read_bytes()).hexdigest()
           print('mascot assets', 'in sync' if a == b else 'OUT OF SYNC — run python3 assets/mascot.py')
           sys.exit(0 if a == b else 1)
           PY
 
       - uses: actions/upload-artifact@v4
         with:
-          name: kowari-bundles
+          name: ningaui-bundles
           path: |
-            kowari-chrome-*.zip
-            kowari-firefox-*.zip
+            ningaui-chrome-*.zip
+            ningaui-firefox-*.zip
           if-no-files-found: error

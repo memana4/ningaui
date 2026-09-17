@@ -1,28 +1,45 @@
-// The entire tool surface. Seven tools: four read, two propose, one finish.
+// The tool surface: API first, with the sandbox store for the agent's own memory.
 //
-// There is no direct write tool. Anything that changes state is a proposal that a
-// human approves or declines, with a reason.
+//   api_read            read state from an allow-listed API
+//   api_request         change state through an allow-listed API
+//   remember            write to the agent's own sandbox (never needs permission)
+//   recall              read the sandbox back
+//   list_actions        see what happened, and what is waiting on a human
+//   request_autonomy    ask to be trusted with a class of action
+//   finish              end the run
+//
+// api_request is the interesting one: policy decides whether it happens now (auto) or
+// waits for a human (confirm). The agent does not choose, and cannot tell policy to
+// hurry up — it can only ask, through an action a human has to approve.
 
 export const TOOL_SPECS = [
-  { name: "storage_list", description: "List the keys in your own sandboxed store.", args: {} },
-  { name: "storage_get", description: "Read a value from your own store by key.", args: { key: "string" } },
-  { name: "api_read", description: "GET an allow-listed endpoint and read its state. Read-only.", args: { url: "string", headers: "object?" } },
-  { name: "propose_storage_change", description: "Propose writing a value to your own store (or deleting it by passing value: null). A human reviews it.", args: { key: "string", value: "any", rationale: "string" } },
-  { name: "propose_api_change", description: "Propose a non-GET request to an allow-listed endpoint. A human reviews it before it is sent.", args: { url: "string", method: "string", body: "any", rationale: "string" } },
-  { name: "list_proposals", description: "See your proposals and the human's decision on each, including their reason.", args: { status: "string?" } },
-  { name: "finish", description: "Finish the run and report to the user.", args: { summary: "string" } },
+  { name: "api_read", description: "GET an allow-listed API and read the current state.", args: { url: "string", headers: "object?" } },
+  { name: "api_request", description: "Change state through an allow-listed API (POST/PUT/PATCH/DELETE). Policy decides whether it applies now or waits for human approval.", args: { url: "string", method: "string", body: "any", rationale: "string" } },
+  { name: "remember", description: "Store a value in your own sandbox. Always available, never needs approval.", args: { key: "string", value: "any" } },
+  { name: "recall", description: "Read your sandbox: one key, or every key with a prefix.", args: { key: "string?", prefix: "string?" } },
+  { name: "list_actions", description: "See your actions: applied, awaiting a decision, declined, or reverted — with the human's reasons.", args: { status: "string?" } },
+  { name: "request_autonomy", description: "Ask for autonomous use of a class of action. A human decides, once.", args: { class: "string", rationale: "string" } },
+  { name: "finish", description: "Finish the run and report what you did and what awaits.", args: { summary: "string" } },
 ];
 
 const MAX_BODY = 20_000;
-const MAX_PROPOSALS_PER_RUN = 12;
+const MAX_ACTIONS_PER_RUN = 12;
+const WRITE_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
 
-export function createTools({ store, proposals, fetchImpl, isAllowed, clock = () => Date.now(), runId = null }) {
-  let proposedThisRun = 0;
+export function createTools({ store, actions, policy, fetchImpl, isAllowed, clock = () => Date.now(), runId = null }) {
+  let actedThisRun = 0;
+
+  async function preview(url, method) {
+    if (method === "DELETE") return null;
+    try {
+      const res = await fetchImpl(url, { method: "GET" });
+      return { before: summarise((await res.text()).slice(0, 2_000)) };
+    } catch (_) {
+      return null;
+    }
+  }
 
   const handlers = {
-    async storage_list() { return { keys: await store.list() }; },
-    async storage_get({ key }) { return { key, value: await store.get(key) }; },
-
     async api_read({ url, headers = {} }) {
       if (!isAllowed(url)) throw new Error(`api_read: ${url} is not on the allowlist`);
       const res = await fetchImpl(url, { method: "GET", headers });
@@ -30,48 +47,69 @@ export function createTools({ store, proposals, fetchImpl, isAllowed, clock = ()
       return { status: res.status, ok: res.ok, truncated: text.length > MAX_BODY, body: text.slice(0, MAX_BODY) };
     },
 
-    async propose_storage_change({ key, value, rationale }) {
-      if (++proposedThisRun > MAX_PROPOSALS_PER_RUN) {
-        throw new Error(`at most ${MAX_PROPOSALS_PER_RUN} proposals per run; finish and let the human catch up`);
+    async api_request({ url, method = "POST", body = null, rationale }) {
+      if (!actions) throw new Error("api_request: no action log is attached in this context");
+      const m = String(method).toUpperCase();
+      if (!WRITE_METHODS.includes(m)) throw new Error(`api_request: use api_read for ${m}`);
+      if (++actedThisRun > MAX_ACTIONS_PER_RUN) {
+        throw new Error(`at most ${MAX_ACTIONS_PER_RUN} actions per run; finish and let the queue drain`);
       }
-      const before = await store.get(key);
-      const p = await proposals.create({
-        runId, kind: "storage", target: { key }, payload: value ?? null, rationale,
-        preview: { before: summarise(before), after: summarise(value ?? null) },
+      const pv = await preview(url, m);
+      const result = await actions.submit({
+        runId, kind: "api", target: { url, method: m }, payload: body, rationale,
+        preview: { ...(pv || {}), after: summarise(body) },
       });
-      return { proposal_id: p.id, status: "pending human review", note: "the value is unchanged until it is approved" };
+      return result.mode === "auto"
+        ? { mode: "auto", applied: true, status: result.applied?.status, body: result.applied?.body?.slice?.(0, 800) ?? null,
+            note: "policy allowed this class to act autonomously; it is logged and reversible" }
+        : { mode: "confirm", action_id: result.id, status: "awaiting human decision",
+            note: "queued with your rationale; nothing has been sent" };
     },
 
-    async propose_api_change({ url, method = "POST", body = null, rationale }) {
-      if (++proposedThisRun > MAX_PROPOSALS_PER_RUN) {
-        throw new Error(`at most ${MAX_PROPOSALS_PER_RUN} proposals per run; finish and let the human catch up`);
-      }
-      let preview = null;
-      try {
-        const res = await fetchImpl(url, { method: "GET" });
-        preview = { before: summarise((await res.text()).slice(0, 2_000)) };
-      } catch (_) { /* preview is best-effort */ }
-      const p = await proposals.create({
-        runId, kind: "api", target: { url, method }, payload: body, rationale,
-        preview: preview ? { ...preview, after: summarise(body) } : { after: summarise(body) },
-      });
-      return { proposal_id: p.id, status: "pending human review", note: "nothing has been sent yet" };
+    async remember({ key, value }) {
+      const r = await store.set(key, value ?? null);
+      return { ...r, note: "your own sandbox, always applied" };
     },
 
-    async list_proposals({ status } = {}) {
-      if (!proposals) return { proposals: [] };
-      const list = status === "pending" ? await proposals.pending() : await proposals.all();
+    async recall({ key, prefix } = {}) {
+      if (key) return { key, value: await store.get(key) };
+      const keys = await store.list();
+      const want = prefix ? keys.filter((k) => k.startsWith(prefix)) : keys;
+      const values = {};
+      for (const k of want.slice(0, 50)) values[k] = summarise(await store.get(k));
+      return { keys: want, values };
+    },
+
+    async list_actions({ status } = {}) {
+      if (!actions) return { autonomy: { enabled: false, autonomous_classes: [] }, actions: [] };
+      const list = status === "pending" ? await actions.pending() : await actions.all();
+      const policyView = policy ? await policy.view() : { enabled: false, autonomous: [] };
       return {
-        proposals: list.slice(-40).map((p) => ({
-          id: p.id, kind: p.kind, target: p.target, status: p.status,
-          rationale: p.rationale, human_reason: p.reason, decided: p.decided,
+        autonomy: { enabled: policyView.enabled, autonomous_classes: policyView.autonomous },
+        actions: list.slice(-40).map((a) => ({
+          id: a.id, kind: a.kind, target: a.target, class: a.cls, mode: a.mode,
+          status: a.status, rationale: a.rationale, human_reason: a.reason,
+          applied: a.applied, decided: a.decided, reverted: a.reverted || null,
         })),
       };
     },
 
+    async request_autonomy({ class: cls, rationale }) {
+      if (!actions || !policy) throw new Error("request_autonomy: no policy is attached in this context");
+      const result = await actions.submit({
+        runId, kind: "policy", target: { cls }, payload: { level: "auto" },
+        rationale: rationale || `asking for autonomy on ${cls}`,
+        preview: { before: "confirm", after: "auto" },
+      });
+      return result.mode === "auto"
+        ? { note: "this class already has autonomy", action_id: result.id }
+        : { action_id: result.id, status: "awaiting human decision", note: "a human decides, once, and can revoke it" };
+    },
+
     async finish({ summary }) {
-      const pend = proposals ? (await proposals.pending()).length : 0;
-      return { finished: true, summary, at: clock(), pending_review: pend };
+      const pending = actions ? (await actions.pending()).length : 0;
+      const v = policy ? await policy.view() : { autonomous: [] };
+      return { finished: true, summary, at: clock(), awaiting_human: pending, autonomous_classes: v.autonomous };
     },
   };
 

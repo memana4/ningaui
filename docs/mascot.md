@@ -2,39 +2,47 @@
 
 ## The name
 
-A **kowari** (*Dasyuroides byrnei*) is a small carnivorous marsupial from the stony deserts
-of south-western Queensland and north-eastern South Australia. It is about 15 cm of body
-with another 13 cm of tail, it hunts at night, and its tail carries a black brush-like
-crest — the feature you can draw in three strokes and still recognise.
+A **ningaui** (*Ningaui* spp., three described species) is one of the smallest carnivorous
+marsupials alive: 5–10 grams, huge dark eyes, a pointed snout, active at night across the
+arid interior of Australia. It hunts insects alone, and it does not need an audience.
 
-It suits the project for a mundane reason as well as a charming one: it is a forager. It
-goes out, brings things back, and what ends up in the burrow is what it decided to carry.
-That is the whole design of this harness — the agent proposes, and nothing lands until you
-take it.
+It fits the project: small, capable, out at night, working country that would kill a larger
+animal. The harness is the rest of the idea — it does the work, you hold the other end, and
+you can drop the leash when it has earned that.
 
-Alternatives considered and rejected: *numbat* (a direct collision with Perplexity's agent
-monitoring tool), *tenrec*, *dormouse*, *quoll*, *pika* (all taken on npm or PyPI),
-*olinguito* and *dunnart* (both free, both fine, both less distinctive).
+## Why not kowari
+
+The project was briefly called **kowari** and the name was changed on the strength of the
+collision check, not taste:
+
+| candidate | GitHub | npm | verdict |
+|---|---|---|---|
+| **ningaui** | 2 repos, top ★7 and untouched since 2023 | free | chosen — nothing active or large |
+| **kultarr** | 2 repos, top ★2 pushed a month ago | free | viable, but recently active |
+| **kowari** | 12 repos, including a **Rust vector database** pushed in late 2025 | free | rejected: active and adjacent |
+| **dunnart** | 18 repos, one ★146 (dead since 2016), one ★18 pushed 2026 | free | rejected: active small tool |
+| **olinguito** | 22 repos, the biggest all dead since 2015–2016 | free | runner-up, just longer |
+| numbat, tenrec, dormouse, quoll, pika, chevrotain, tarsier, marmot, jerboa | — | taken | rejected |
+| gundi, suslik | 150 and 171 repos | free | rejected: crowded |
 
 ## The drawing
 
 One shape list, two outputs. [`assets/mascot.py`](../assets/mascot.py) holds the geometry
 and emits:
 
-- `assets/kowari-icon.svg` — vector, for humans and browsers
-- `assets/kowari-{16,32,48,128,512}.png` — for the README and the repositories
+- `assets/ningaui-icon.svg` — vector, for humans and browsers
+- `assets/ningaui-{16,32,48,128,512}.png` — for the README and the repositories
 - `platform/{chrome,firefox}/icons/icon-{16,32,48,128}.png` — what the manifests point at
 
 ```bash
 python3 assets/mascot.py
 ```
 
-Pillow rasterizes at 8× and downsamples, so the small sizes are honest: a mascot that only
-looks right at 512 px is not a mascot.
+Pillow rasterizes at 8× and downsamples, so the small sizes are honest.
 
 The blue harness and the leash leaving the top of the frame are the project's argument in
-one image. The animal is equipped and it can go and do things — you are holding the other
-end.
+one image: the animal is equipped and free to work, and someone is still holding the leash
+until it has earned the right to be let go.
 
 ## Colour
 

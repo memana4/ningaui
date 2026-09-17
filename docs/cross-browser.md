@@ -46,7 +46,7 @@ bug. That is why the build refuses.
 ```bash
 # 1. about:config → xpinstall.signatures.required → false
 #    (ESR, Developer Edition and Nightly expose this; release builds do not)
-# 2. about:addons → gear → Install Add-on From File → kowari-firefox-<version>.zip
+# 2. about:addons → gear → Install Add-on From File → ningaui-firefox-<version>.zip
 ```
 
 Or `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on** for a one-session
@@ -63,8 +63,8 @@ install anywhere.
 - loads the **real** `core/bg.js` twice, once per host, and drives its message handlers
   through `run`, `proposals`, `decide`, `permissions`, `env` and `keepalive`;
 - verifies the permission-refusal path that only Firefox can produce;
-- runs the loop and the proposal queue on both and asserts the journals and applied
-  payloads are identical;
+- runs the loop, the action log and the policy engine on both and asserts the journals,
+  the applied payloads and the autonomy view are identical;
 - validates both manifests and both built bundles.
 
 Loading `bg.js` twice needs a cache-busting import (`?tag`) because it binds to

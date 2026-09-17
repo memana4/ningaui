@@ -42,19 +42,31 @@ going until the step budget is exhausted; the journal records every `parse_error
 
 ## 2. The tool surface
 
-Seven tools. Four read, two propose, one finish.
+Seven tools. API first: two for the world, two for the agent's own memory, two about
+policy, one to stop.
 
 | tool | args | notes |
 |---|---|---|
-| `storage_list` | — | keys in the agent's own store |
-| `storage_get` | `key` | one value, or `null` |
-| `api_read` | `url`, `headers?` | `GET` only, prefix-checked |
-| `propose_storage_change` | `key`, `value`, `rationale` | `value: null` proposes a delete |
-| `propose_api_change` | `url`, `method`, `body`, `rationale` | non-`GET`; `GET`/`HEAD` are refused |
-| `list_proposals` | `status?` | includes the human's decision and reason |
-| `finish` | `summary` | reports how much is awaiting review |
+| `api_read` | `url`, `headers?` | `GET` only, allowlist-checked |
+| `api_request` | `url`, `method`, `body`, `rationale` | non-`GET`; routed by policy, not by the agent |
+| `remember` | `key`, `value` | the agent's own sandbox — always applies, never queues |
+| `recall` | `key?`, `prefix?` | read one value, or up to 50 by prefix |
+| `list_actions` | `status?` | applied, queued, declined, reverted, plus the autonomy view |
+| `request_autonomy` | `class`, `rationale` | files a policy action a human must approve |
+| `finish` | `summary` | reports what awaits a human and what is trusted |
 
-There is deliberately **no** `storage_set`, `storage_delete`, or arbitrary `api_call`.
+`api_request` is the only way to change state through an API, and it does not decide its own
+outcome. It returns exactly what happened:
+
+```json
+{"mode": "auto", "applied": true, "status": 200, "body": "…",
+ "note": "policy allowed this class to act autonomously; it is logged and reversible"}
+```
+
+```json
+{"mode": "confirm", "action_id": "a-mf3k1x-2", "status": "awaiting human decision",
+ "note": "queued with your rationale; nothing has been sent"}
+```
 
 ## 3. The message protocol
 
@@ -65,8 +77,13 @@ Panel → background, over `runtime.sendMessage`. The listener replies asynchron
 |---|---|---|
 | `run` | `task` | the run result, or `{error}` |
 | `stop` | — | `{stopped: true}` |
-| `proposals` | — | `{pending[], decided[], audit[]}` |
-| `decide` | `id`, `decision`, `reason` | `{ok, proposal}` or `{ok:false, error}` |
+| `actions` | — | `{pending[], recent[], audit[]}` |
+| `decide` | `id`, `decision`, `reason` | `{ok, action}` or `{ok:false, error}` |
+| `revert` | `id`, `reason` | `{ok, action}` or `{ok:false, error}` |
+| `trust` | — | the policy view: classes, levels, counters, quotas |
+| `setLevel` | `cls`, `level`, `note?` | `{ok, record}` |
+| `setPolicy` | `patch` | `{ok, policy}` |
+| `revokeAll` | — | `{ok, revoked}` |
 | `clearDecided` | — | `{cleared: n}` |
 | `journal` | `runId` | `{journal[]}` |
 | `permissions` | `request?` | `{granted, origins[]}` |
@@ -84,23 +101,25 @@ stops the event page being reaped during a run.
 
 ## 4. Run states
 
-`idle` · `running` · `awaiting_approval` · `done` · `stopped` · `interrupted` ·
+`idle` · `running` · `awaiting_decision` · `done` · `stopped` · `interrupted` ·
 `model_error` · `max_steps` · `timeout` · `error`
 
-`awaiting_approval` is the interesting one: the run finished, but it left proposals in the
-queue, and the next thing that happens is your decision rather than anything the agent
-does.
+`awaiting_decision` is the interesting one: the run finished, but it left actions in the
+queue, and the next thing that happens is your decision rather than anything the agent does.
 
-## 5. The proposal record
+## 5. The action record
 
 ```json
 {
-  "id": "p-mf3k1x-2",
+  "id": "a-mf3k1x-2",
   "runId": "run-mf3k1x",
   "kind": "api",
   "target": {"url": "http://localhost:11434/state", "method": "POST"},
   "payload": {"n": 1},
   "rationale": "state says 0, should be 1",
+  "cls": "POST localhost:11434/state",
+  "mode": "confirm",
+  "policyWhy": "no autonomy on this class yet",
   "preview": {"before": "{\"state\":{\"n\":0}}", "after": "{\"n\":1}"},
   "status": "pending",
   "created": 1789086000000,
@@ -111,6 +130,31 @@ does.
 }
 ```
 
-After a decision, `status` is `approved` or `declined`, `decided` and `by` are filled in,
-`reason` holds your reason, and `applied` holds what actually happened — for an API
-proposal, the HTTP status and a slice of the response body.
+`mode` is the policy verdict — `auto` or `confirm`. `status` then runs through the life of
+the action:
+
+| status | meaning |
+|---|---|
+| `pending` | waiting for a human decision |
+| `applied` | it happened; `by` says `policy` or `human` |
+| `failed` | it was attempted and the endpoint refused; autonomy on the class is revoked |
+| `declined` | you said no; `reason` holds why |
+| `reverted` | it was applied and then undone |
+
+An action that is refused **before** anything is attempted — an allowlist that changed while
+it waited — is put back to `pending` with the refusal in `policyWhy`, so your approval is not
+consumed by a configuration problem.
+
+The policy ledger, one record per class:
+
+```json
+{
+  "cls": "POST localhost:11434/state",
+  "level": "auto",
+  "explicit": false,
+  "approved": 9, "declined": 0, "auto": 4, "errors": 0, "reverted": 0,
+  "firstSeen": 1789000000000, "lastDecision": 1789080000000,
+  "lastDecline": null, "lastError": null, "cooldownUntil": 0,
+  "note": "earned after 9 approvals and no declines or errors"
+}
+```

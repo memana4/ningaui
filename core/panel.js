@@ -1,20 +1,20 @@
 // Panel UI — one document, both browsers: Chrome renders it in the side panel,
 // Firefox renders it in the sidebar; the manifest decides which.
 //
-// Two jobs: run the agent, and review what it proposed.
-// Reviewer flow: the queue stacks up while you are away, every proposal is one line plus a
-// rationale, and it is driven by four keys — arrows to move, a to approve, d to decline with
-// a reason, s to skip. The reason is stored on the proposal and read back by the agent.
+// Three jobs: run the agent, decide what it is waiting on you for, and manage how much
+// autonomy it has earned.
 
 import { createApi, originsFor } from "./api.js";
 
 const api = createApi(globalThis.browser?.runtime ? globalThis.browser : globalThis.chrome);
 const $ = (s) => document.querySelector(s);
-let queue = { pending: [], decided: [] };
+let queue = { pending: [], recent: [], audit: [] };
+let trust = { classes: [], autonomous: [], enabled: true };
 let sel = 0;
 
 const send = (msg) => new Promise((res) => api.runtime.sendMessage(msg, res));
 const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+const short = (o, n = 200) => esc(JSON.stringify(o)?.slice(0, n) ?? "");
 
 function line(text, cls = "") {
   const el = document.createElement("div");
@@ -38,14 +38,17 @@ function fmtEvent(e) {
 }
 
 api.runtime.onMessage.addListener((msg) => {
-  if (msg.type === "event") line(fmtEvent(msg.event), msg.event.type);
+  if (msg.type === "event") {
+    const cls = msg.event.type;
+    line(fmtEvent(msg.event), cls);
+    if (cls === "tool_result" && /list_actions|request_autonomy/.test(msg.event.name || "")) refreshAll();
+  }
   if (msg.type === "status") setState(msg.status);
 });
 
 // ---- keepalive -------------------------------------------------------------
 // Firefox has no offscreen API: an open port from this panel is what stops the event page
-// being reaped mid-run. It doubles as a push channel. Chrome ignores it (the offscreen
-// document does the job there), but connecting costs nothing.
+// being reaped mid-run. It doubles as a push channel. Chrome ignores it.
 let port = null;
 function connectPort() {
   try {
@@ -63,83 +66,152 @@ function setState(st) {
   if (st.result) line(`result: ${st.result}`, "ok");
   if (st.error) line(`error: ${st.error}`, "warn");
   if (st.pending !== undefined) $("#pendingcount").textContent = String(st.pending);
-  if (st.state === "awaiting_approval") refreshQueue();
+  if (st.state === "awaiting_decision") refreshAll();
 }
 
-// ---- review ----------------------------------------------------------------
+// ---- refresh ---------------------------------------------------------------
+async function refreshAll() { await Promise.all([refreshQueue(), refreshTrust()]); }
+
 async function refreshQueue() {
-  const r = await send({ type: "proposals" });
-  queue = r || { pending: [], decided: [] };
+  const r = await send({ type: "actions" });
+  queue = r || { pending: [], recent: [] };
   if (sel >= queue.pending.length) sel = Math.max(0, queue.pending.length - 1);
   $("#pendingcount").textContent = String(queue.pending.length);
-  renderReview();
+  renderQueue();
 }
 
-function renderReview() {
+async function refreshTrust() {
+  trust = await send({ type: "trust" });
+  renderTrust();
+}
+
+// ---- the queue -------------------------------------------------------------
+function actionRow(a, i) {
+  const target = a.kind === "store" ? `store “${esc(a.target.key)}”`
+    : a.kind === "policy" ? `policy for ${esc(a.target.cls)}`
+    : `${esc(a.target.method)} ${esc(a.target.url)}`;
+  const before = a.preview?.before ? esc(a.preview.before) : "—";
+  const after = a.preview?.after ? esc(a.preview.after) : short(a.payload);
+  return `<div class="prop ${i === sel ? "sel" : ""}" data-i="${i}">
+    <div class="prow"><b>${a.kind}</b> ${target} <span class="dim">${a.cls || ""}</span></div>
+    <div class="prat">${esc(a.rationale)}</div>
+    <div class="pdiff"><span class="dim">now:</span> ${before}<br><span class="dim">after:</span> ${after}</div>
+    <div class="pwhy dim">why not auto: ${esc(a.policyWhy || "")}</div>
+  </div>`;
+}
+
+function renderQueue() {
   const box = $("#review");
-  if (!queue.pending.length) {
-    box.innerHTML = '<div class="line dim">nothing waiting</div>';
-  } else {
-    box.innerHTML = queue.pending.map((p, i) => {
-      const target = p.kind === "storage"
-        ? `store key “${esc(p.target.key)}”`
-        : `${esc(p.target.method)} ${esc(p.target.url)}`;
-      const before = p.preview?.before ? esc(p.preview.before) : "—";
-      const after = p.preview?.after ? esc(p.preview.after) : esc(JSON.stringify(p.payload));
-      return `<div class="prop ${i === sel ? "sel" : ""}" data-i="${i}">
-        <div class="prow"><b>${p.kind}</b> ${target} <span class="dim">${new Date(p.created).toLocaleTimeString()}</span></div>
-        <div class="prat">${esc(p.rationale)}</div>
-        <div class="pdiff"><span class="dim">now:</span> ${before}<br><span class="dim">after:</span> ${after}</div>
-      </div>`;
-    }).join("");
-    box.querySelectorAll(".prop").forEach((el) => el.addEventListener("click", () => { sel = +el.dataset.i; renderReview(); }));
-  }
-  $("#decided").innerHTML = queue.decided.slice(0, 12).map((p) => {
-    const what = p.kind === "storage" ? p.target.key : `${p.target.method} ${p.target.url}`;
-    return `<div class="line ${p.status === "approved" ? "ok" : "warn"}">${p.status}: ${esc(what)}` +
-           (p.reason ? ` — “${esc(p.reason)}”` : "") + `</div>`;
-  }).join("") || '<div class="line dim">no decisions yet</div>';
+  box.innerHTML = queue.pending.length
+    ? queue.pending.map(actionRow).join("")
+    : '<div class="line dim">nothing waiting on you</div>';
+  box.querySelectorAll(".prop").forEach((el) => el.addEventListener("click", () => { sel = +el.dataset.i; renderQueue(); }));
+
+  $("#recent").innerHTML = queue.recent.slice(0, 25).map((a) => {
+    const what = a.kind === "store" ? a.target.key
+      : a.kind === "policy" ? `policy ${a.target.cls}`
+      : `${a.target.method} ${a.target.url}`;
+    const tag = a.mode === "auto" ? "auto" : "approved";
+    const cls = a.status === "applied" ? (a.mode === "auto" ? "ok" : "ok") : a.status === "declined" ? "warn" : "dim";
+    const status = a.applied?.status ? ` · HTTP ${a.applied.status}` : "";
+    const reason = a.reason ? ` — “${esc(a.reason)}”` : "";
+    const revert = a.status === "applied"
+      ? `<button class="mini ghost rev" data-id="${a.id}">revert</button>` : "";
+    return `<div class="line ${cls}">${tag}: ${esc(what)} <span class="dim">${a.cls || ""}</span>${status}${reason}${revert}</div>`;
+  }).join("") || '<div class="line dim">nothing yet</div>';
+
+  $("#recent").querySelectorAll(".rev").forEach((b) => b.addEventListener("click", async () => {
+    const reason = prompt("Why revert this action?");
+    if (reason === null) return;
+    const r = await send({ type: "revert", id: b.dataset.id, reason });
+    line(r.ok ? `reverted ${b.dataset.id}` : `! ${r.error}`, r.ok ? "ok" : "warn");
+    await refreshAll();
+  }));
 }
 
 async function decide(decision) {
-  const p = queue.pending[sel];
-  if (!p) return;
+  const a = queue.pending[sel];
+  if (!a) return;
   const reason = $("#reason").value.trim();
   if (decision === "decline" && !reason) return line("declining needs a reason — the agent reads it", "warn");
-  const r = await send({ type: "decide", id: p.id, decision, reason });
+  const r = await send({ type: "decide", id: a.id, decision, reason });
   if (!r.ok) return line("! " + r.error, "warn");
-  const a = r.proposal.applied;
-  line(`${decision === "approve" ? "✔ applied" : "✗ declined"} ${p.kind} ${p.kind === "storage" ? p.target.key : p.target.url}` +
-       (a?.status ? ` (HTTP ${a.status})` : ""), decision === "approve" ? "ok" : "warn");
+  const applied = r.action.applied;
+  line(`${decision === "approve" ? "✔ applied" : "✗ declined"} ${a.kind} ${a.cls}` +
+       (applied?.status ? ` (HTTP ${applied.status})` : ""), decision === "approve" ? "ok" : "warn");
+  const pc = r.action.policyChange;
+  if (pc && pc.changed) line(`policy: ${pc.why}`, "warn");
   $("#reason").value = "";
-  await refreshQueue();
-  await refreshStorage();
+  await refreshAll();
 }
 
 document.addEventListener("keydown", (e) => {
   if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return;
-  if (e.key === "ArrowDown" || e.key === "j") { sel = Math.min(sel + 1, Math.max(0, queue.pending.length - 1)); renderReview(); }
-  else if (e.key === "ArrowUp" || e.key === "k") { sel = Math.max(0, sel - 1); renderReview(); }
+  if (e.key === "ArrowDown" || e.key === "j") { sel = Math.min(sel + 1, Math.max(0, queue.pending.length - 1)); renderQueue(); }
+  else if (e.key === "ArrowUp" || e.key === "k") { sel = Math.max(0, sel - 1); renderQueue(); }
   else if (e.key === "a" || e.key === "Enter") decide("approve");
   else if (e.key === "d") decide("decline");
-  else if (e.key === "s") { sel = Math.min(sel + 1, Math.max(0, queue.pending.length - 1)); renderReview(); }
-  else if (e.key === "r") refreshQueue();
+  else if (e.key === "s") { sel = Math.min(sel + 1, Math.max(0, queue.pending.length - 1)); renderQueue(); }
+  else if (e.key === "r") refreshAll();
 });
 
-$("#approveAllStorage").addEventListener("click", async () => {
-  const targets = queue.pending.filter((p) => p.kind === "storage");
-  for (const p of targets) await send({ type: "decide", id: p.id, decision: "approve" });
-  line(`approved ${targets.length} storage proposals`, "ok");
-  await refreshQueue(); await refreshStorage();
+$("#approveAllStore").addEventListener("click", async () => {
+  const targets = queue.pending.filter((a) => a.kind === "store" || a.kind === "policy");
+  for (const a of targets) await send({ type: "decide", id: a.id, decision: "approve" });
+  line(`approved ${targets.length} sandbox/policy actions`, "ok");
+  await refreshAll();
 });
 
 $("#clearDecided").addEventListener("click", async () => {
   const r = await send({ type: "clearDecided" });
-  line(`cleared ${r.cleared} decided proposals`, "ok");
-  await refreshQueue();
+  line(`cleared ${r.cleared} decided actions`, "ok");
+  await refreshAll();
 });
 
 document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => { $("#reason").value = c.dataset.reason; }));
+
+// ---- autonomy --------------------------------------------------------------
+function renderTrust() {
+  const t = trust || {};
+  const on = t.enabled !== false;
+  $("#autostate").textContent = on
+    ? `${(t.autonomous || []).length} class${(t.autonomous || []).length === 1 ? "" : "es"} trusted · ${t.autoHour || 0}/${t.maxAutoPerHour || 0} auto actions this hour`
+    : "autonomy off — everything waits for you";
+  $("#autostate").className = "state " + (on && (t.autonomous || []).length ? "done" : "idle");
+  $("#autotoggle").textContent = on ? "turn autonomy off" : "turn autonomy on";
+
+  $("#trust").innerHTML = (t.classes || []).length ? (t.classes || []).map((c) => `
+    <div class="trow">
+      <div class="tname"><b>${esc(c.level)}</b> ${esc(c.cls)}
+        <span class="dim">${c.approved} approved · ${c.declined} declined · ${c.auto} auto · ${c.errors} errors${c.reverted ? ` · ${c.reverted} reverted` : ""}</span>
+        ${c.note ? `<span class="dim">${esc(c.note)}</span>` : ""}
+      </div>
+      <select class="tlevel" data-cls="${esc(c.cls)}">
+        <option value="confirm"${c.level === "confirm" ? " selected" : ""}>confirm</option>
+        <option value="auto"${c.level === "auto" ? " selected" : ""}>auto</option>
+        <option value="deny"${c.level === "deny" ? " selected" : ""}>deny</option>
+      </select>
+    </div>`).join("") : '<div class="line dim">no classes yet — the ledger fills as the agent proposes things</div>';
+
+  $("#trust").querySelectorAll(".tlevel").forEach((sel2) => sel2.addEventListener("change", async () => {
+    const r = await send({ type: "setLevel", cls: sel2.dataset.cls, level: sel2.value });
+    line(r.ok ? `${sel2.dataset.cls} → ${sel2.value} (by hand; outranks the earned level)` : `! ${r.error}`, r.ok ? "ok" : "warn");
+    await refreshTrust();
+  }));
+}
+
+$("#revokeall").addEventListener("click", async () => {
+  const r = await send({ type: "revokeAll" });
+  line(`revoked autonomy on ${r.revoked} classes`, "warn");
+  await refreshAll();
+});
+
+$("#autotoggle").addEventListener("click", async () => {
+  const r = await send({ type: "setPolicy", patch: { enabled: trust.enabled === false } });
+  trust = r.policy;
+  line(`autonomy ${trust.enabled ? "on" : "off"}`, trust.enabled ? "ok" : "warn");
+  renderTrust();
+});
 
 // ---- run -------------------------------------------------------------------
 $("#run").addEventListener("click", async () => {
@@ -148,8 +220,7 @@ $("#run").addEventListener("click", async () => {
   $("#transcript").innerHTML = "";
   const r = await send({ type: "run", task });
   if (r && r.error) line("! " + r.error, "warn");
-  await refreshQueue();
-  await refreshStorage();
+  await refreshAll(); await refreshStorage();
 });
 
 $("#stop").addEventListener("click", async () => {
@@ -157,11 +228,10 @@ $("#stop").addEventListener("click", async () => {
   setState((await api.storage.get("status")).status || { state: "idle" });
 });
 
-// ---- permissions and environment ------------------------------------------
+// ---- permissions, storage, settings ---------------------------------------
 async function refreshEnv() {
   const env = await send({ type: "env" });
-  $("#env").textContent =
-    `${env.browser} · keepalive: ${env.keepalive} · built-in model: ${env.builtInModel ? "available" : "not available"}`;
+  $("#env").textContent = `${env.browser} · keepalive: ${env.keepalive} · built-in model: ${env.builtInModel ? "available" : "not available"}`;
   const perms = await send({ type: "permissions" });
   $("#permstate").textContent = perms.granted ? "granted" : "NOT granted";
   $("#permstate").className = "state " + (perms.granted ? "done" : "error");
@@ -177,16 +247,13 @@ $("#grant").addEventListener("click", async () => {
   await refreshEnv();
 });
 
-// ---- storage + settings ----------------------------------------------------
 async function refreshStorage() {
   const all = await api.storage.get(null);
   const keys = Object.keys(all).filter((k) => k.startsWith("agent:")).sort();
-  const box = $("#store");
-  box.innerHTML = keys.map((k) => `<div class="line">${esc(k.slice(6))} = ${esc(JSON.stringify(all[k]).slice(0, 200))}</div>`).join("")
+  $("#store").innerHTML = keys.map((k) => `<div class="line">${esc(k.slice(6))} = ${esc(JSON.stringify(all[k]).slice(0, 200))}</div>`).join("")
     || '<div class="line dim">empty</div>';
   $("#storecount").textContent = String(keys.length);
 }
-
 document.querySelector("#refresh")?.addEventListener("click", refreshStorage);
 
 $("#clear").addEventListener("click", async () => {
@@ -205,30 +272,39 @@ async function loadConfig() {
   $("#apiKey").value = cfg.apiKey || "";
   $("#allowlist").value = (cfg.allowlist || []).join("\n");
   $("#persona").value = cfg.persona || "";
-  const mf = api.runtime.getManifest();
-  $("#hosts").textContent = (mf.host_permissions || []).join("  ");
+  const pol = cfg.policy || {};
+  $("#minapprovals").value = pol.minApprovals ?? 8;
+  $("#alwaysconfirm").value = (pol.alwaysConfirm || []).join("\n");
+  $("#hosts").textContent = (api.runtime.getManifest().host_permissions || []).join("  ");
 }
 
 $("#save").addEventListener("click", async () => {
+  const cfg = (await api.storage.get("config")).config || {};
   const allowlist = $("#allowlist").value.split("\n").map((s) => s.trim()).filter(Boolean);
   await api.storage.set({
     config: {
+      ...cfg,
       backend: $("#backend").value,
       baseUrl: $("#baseUrl").value.trim(),
       model: $("#model").value.trim(),
       apiKey: $("#apiKey").value.trim(),
       allowlist,
       persona: $("#persona").value.trim(),
+      policy: {
+        ...(cfg.policy || {}),
+        minApprovals: Number($("#minapprovals").value) || 8,
+        alwaysConfirm: $("#alwaysconfirm").value.split("\n").map((s) => s.trim()).filter(Boolean),
+      },
     },
   });
-  line("settings saved — the allowlist is enforced in the background, not here", "ok");
+  line("settings saved — policy is enforced in the background, not here", "ok");
   line(`origins to grant: ${originsFor(allowlist).join(", ")}`, "dim");
   await refreshEnv();
 });
 
 connectPort();
 loadConfig();
-refreshQueue();
+refreshAll();
 refreshStorage();
 refreshEnv();
 api.storage.get("status").then((s) => setState(s.status || { state: "idle" }));

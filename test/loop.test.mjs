@@ -1,14 +1,14 @@
-// Node test for the loop, the tool surface and the store — no browser, no API key.
+// Loop and protocol tests — no browser, no network, no API key.
 //
-// The harness is written so the host injects its capabilities (storage backend,
-// fetch, model), which is exactly what makes it testable here: we substitute an
-// in-memory store, a stub fetch, and a scripted model.
+// The harness takes its storage, fetch, policy and action log as injected dependencies,
+// which is what makes all of this testable here.
 
 import assert from "node:assert/strict";
 import { runAgent, parseStep, buildSystemPrompt } from "../core/agent.js";
 import { createTools } from "../core/tools.js";
-import { createProposals } from "../core/proposals.js";
 import { createStore } from "../core/store.js";
+import { createPolicy } from "../core/policy.js";
+import { createActions } from "../core/actions.js";
 
 let passed = 0, failed = 0;
 const test = async (name, fn) => {
@@ -16,13 +16,10 @@ const test = async (name, fn) => {
   catch (err) { console.log(`FAIL  ${name}: ${err.message}`); failed++; }
 };
 
-// ---- fixtures ---------------------------------------------------------------
 function memoryBackend() {
   let data = {};
   return {
-    get: async (keys) => (keys === null ? { ...data } : keys instanceof Array
-      ? Object.fromEntries(keys.filter((k) => k in data).map((k) => [k, data[k]]))
-      : (keys in data ? { [keys]: data[keys] } : {})),
+    get: async (keys) => (keys === null ? { ...data } : (keys in data ? { [keys]: data[keys] } : {})),
     set: async (obj) => { Object.assign(data, obj); },
     remove: async (keys) => { for (const k of [].concat(keys)) delete data[k]; },
   };
@@ -33,103 +30,122 @@ function scriptedModel(replies) {
   return {
     name: "scripted",
     seen: [],
-    async complete(messages) {
-      this.seen.push(messages.length);
-      const r = replies[Math.min(i++, replies.length - 1)];
-      return typeof r === "function" ? r(messages) : r;
-    },
+    async complete(messages) { this.seen.push(messages.length); return replies[Math.min(i++, replies.length - 1)]; },
   };
 }
 
-const OK_FETCH = async () => ({
+const OK_FETCH = async (url, init = {}) => ({
   ok: true, status: 200,
-  text: async () => JSON.stringify({ data: [{ id: "z-ai-glm-5-3" }] }),
+  text: async () => JSON.stringify({ state: { n: 0 }, method: init.method || "GET", url }),
 });
 const allow = (u) => u.startsWith("https://api.example.com/");
 
-// ---- tests ------------------------------------------------------------------
-await test("parseStep: bare JSON, fenced JSON, and prose-wrapped JSON all parse", () => {
+function stack({ policyOverrides = {} } = {}) {
+  const backend = memoryBackend();
+  const store = createStore(backend);
+  const policy = createPolicy({ backend, overrides: policyOverrides });
+  const actions = createActions({ backend, store, fetchImpl: OK_FETCH, policy, isAllowed: allow });
+  const tools = createTools({ store, actions, policy, fetchImpl: OK_FETCH, isAllowed: allow });
+  return { backend, store, policy, actions, tools };
+}
+
+await test("parseStep: bare, fenced and prose-wrapped JSON all parse", () => {
   assert.equal(parseStep('{"final":"done"}').kind, "final");
-  assert.equal(parseStep('```json\n{"tool":"storage_list","args":{}}\n```').name, "storage_list");
-  assert.equal(parseStep('Sure! Here you go: {"tool":"storage_get","args":{"key":"a"}} — that should work.').args.key, "a");
+  assert.equal(parseStep('```json\n{"tool":"recall","args":{}}\n```').name, "recall");
+  assert.equal(parseStep('Sure! Here you go: {"tool":"recall","args":{"key":"a"}} — that should work.').args.key, "a");
   assert.throws(() => parseStep("no json here"));
   assert.throws(() => parseStep('{"tool":"x"'));
 });
 
 await test("parseStep: nested objects and braces inside strings survive", () => {
-  const s = parseStep('{"tool":"storage_set","args":{"key":"k","value":{"a":{"b":[1,{"c":"}"}]}}}}');
+  const s = parseStep('{"tool":"remember","args":{"key":"k","value":{"a":{"b":[1,{"c":"}"}]}}}}');
   assert.equal(s.args.value.a.b[1].c, "}");
 });
 
-await test("system prompt lists every tool and the step budget", () => {
-  const store = createStore(memoryBackend());
-  const proposals = createProposals({ backend: memoryBackend(), store, fetchImpl: OK_FETCH, isAllowed: allow });
-  const tools = createTools({ store, proposals, fetchImpl: OK_FETCH, isAllowed: allow });
-  const p = buildSystemPrompt({ tools, limits: { maxSteps: 7 } });
+await test("the prompt is API-first and explains how policy routes actions", () => {
+  const { tools, policy } = stack();
+  const p = buildSystemPrompt({ tools, limits: { maxSteps: 7 }, policy });
   for (const name of tools.names) assert.ok(p.includes(name), `missing ${name}`);
-  assert.ok(p.includes("at most 7 steps"));
-  assert.ok(p.includes("you cannot write anything directly"), "the prompt must state the approval rule");
   assert.equal(tools.names.length, 7, "tool surface must stay minimal");
-  assert.ok(tools.names.includes("propose_storage_change") && tools.names.includes("api_read"));
   assert.ok(!tools.names.includes("storage_set"), "there is no direct write tool");
+  assert.ok(p.includes("routed by policy"), "the prompt must explain who decides");
+  assert.ok(p.includes("'auto'") && p.includes("'confirm'") && p.includes("'deny'"));
+  assert.ok(p.includes("at most 7 steps"));
 });
 
-await test("happy path: write, call, finish — and the journal records every step", async () => {
-  const backend = memoryBackend();
-  const store = createStore(backend);
-  const proposals = createProposals({ backend, store, fetchImpl: OK_FETCH, isAllowed: allow });
+await test("happy path: read, queue an action, finish — with the journal recording every step", async () => {
+  const { store, actions, policy } = stack();
   const model = scriptedModel([
-    '{"tool":"api_read","args":{"url":"https://api.example.com/v1/models"}}',
-    '{"tool":"propose_storage_change","args":{"key":"note","value":"hello","rationale":"remember what happened"}}',
-    '{"final":"read the model list and proposed a note"}',
+    '{"tool":"api_read","args":{"url":"https://api.example.com/state"}}',
+    '{"tool":"api_request","args":{"url":"https://api.example.com/state","method":"POST","body":{"n":1},"rationale":"state says 0"}}',
+    '{"final":"read the state and proposed a change"}',
   ]);
   const out = await runAgent({
-    task: "read the model list then propose a note", model, store, proposals,
+    task: "read the state then change it", model, store, actions, policy,
     fetchImpl: OK_FETCH, isAllowed: allow, runId: "t1",
   });
   assert.equal(out.status, "ok");
   assert.equal(out.steps, 3);
-  assert.match(out.result, /proposed a note/);
-  assert.equal(await store.get("note"), null, "the write waits for approval");
-  assert.equal((await proposals.pending()).length, 1);
-  const j = await store.readJournal("t1");
-  const types = j.map((e) => e.type);
-  assert.deepEqual(types, ["start", "tool_call", "tool_result", "tool_call", "tool_result", "final"]);
+  assert.equal((await actions.pending()).length, 1, "no autonomy yet, so it waits");
+  const journal = await store.readJournal("t1");
+  assert.deepEqual(journal.map((e) => e.type), ["start", "tool_call", "tool_result", "tool_call", "tool_result", "final"]);
 });
 
-await test("finish tool ends the run from the tool side, not the model side", async () => {
-  const store = createStore(memoryBackend());
-  const model = scriptedModel(['{"tool":"finish","args":{"summary":"nothing to do"}}', "should not be reached"]);
-  const out = await runAgent({ task: "x", model, store, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t2" });
+await test("on a granted class the action applies inside the same step", async () => {
+  const { store, actions, policy } = stack({ policyOverrides: { autoAllow: ["POST api.example.com/*"] } });
+  const model = scriptedModel([
+    '{"tool":"api_request","args":{"url":"https://api.example.com/state","method":"POST","body":{"n":9},"rationale":"routine"}}',
+    '{"final":"applied it"}',
+  ]);
+  const out = await runAgent({ task: "bump it", model, store, actions, policy, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t2" });
   assert.equal(out.status, "ok");
-  assert.equal(out.result, "nothing to do");
-  assert.equal(out.steps, 1);
+  assert.equal((await actions.pending()).length, 0, "autonomous actions do not queue");
+  const applied = await actions.all();
+  assert.equal(applied.length, 1);
+  assert.equal(applied[0].mode, "auto");
+  assert.equal(applied[0].status, "applied");
 });
 
-await test("bad reply is corrected once, then the run continues", async () => {
-  const store = createStore(memoryBackend());
+await test("finish reports what is waiting and what is trusted", async () => {
+  const { store, actions, policy } = stack({'policyOverrides': {}});
+  await actions.submit({ kind: "api", target: { url: "https://api.example.com/state", method: "POST" }, payload: {}, rationale: "queue this" });
+  const model = scriptedModel(['{"tool":"finish","args":{"summary":"queued one change"}}', "unreached"]);
+  const out = await runAgent({ task: "x", model, store, actions, policy, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t3" });
+  assert.equal(out.status, "ok");
+  assert.equal(out.steps, 1);
+  assert.equal(out.result, "queued one change");
+});
+
+await test("bad replies are corrected once and the run continues", async () => {
+  const { store, actions, policy } = stack();
   const model = scriptedModel([
     "I think I should probably call a tool now.",
-    '{"tool":"storage_set","args":{"key":"k","value":1}}',
+    '{"tool":"remember","args":{"key":"k","value":1}}',
     '{"final":"recovered"}',
   ]);
-  const out = await runAgent({ task: "x", model, store, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t3" });
+  const out = await runAgent({ task: "x", model, store, actions, policy, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t4" });
   assert.equal(out.status, "ok");
   assert.equal(out.result, "recovered");
-  const j = await store.readJournal("t3");
-  assert.ok(j.some((e) => e.type === "parse_error"), "parse_error should be journaled");
+  assert.ok((await store.readJournal("t4")).some((e) => e.type === "parse_error"));
 });
 
-await test("api_call refuses anything not on the allowlist", async () => {
-  const store = createStore(memoryBackend());
+await test("api_read refuses anything not on the allowlist", async () => {
+  const { store, actions, policy } = stack();
   const model = scriptedModel(['{"tool":"api_read","args":{"url":"https://evil.example/x"}}', '{"final":"ok"}']);
-  await runAgent({ task: "x", model, store, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t4" });
-  const j = await store.readJournal("t4");
-  const res = j.find((e) => e.type === "tool_result");
-  assert.match(res.result.error, /not on the allowlist/);
+  await runAgent({ task: "x", model, store, actions, policy, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t5" });
+  const journal = await store.readJournal("t5");
+  assert.match(journal.find((e) => e.type === "tool_result").result.error, /not on the allowlist/);
 });
 
-await test("storage rejects empty keys and oversized values", async () => {
+await test("api_request refuses read methods, which belong to api_read", async () => {
+  const { store, actions, policy } = stack();
+  const model = scriptedModel(['{"tool":"api_request","args":{"url":"https://api.example.com/state","method":"GET","rationale":"peek"}}', '{"final":"ok"}']);
+  await runAgent({ task: "x", model, store, actions, policy, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t6" });
+  const journal = await store.readJournal("t6");
+  assert.match(journal.find((e) => e.type === "tool_result").result.error, /use api_read/);
+});
+
+await test("the sandbox rejects empty keys and oversized values", async () => {
   const store = createStore(memoryBackend());
   await assert.rejects(() => store.set("", 1), /key required/);
   await assert.rejects(() => store.set("big", "x".repeat(300_000)), /over 256 kB/);
@@ -139,44 +155,46 @@ await test("storage rejects empty keys and oversized values", async () => {
 });
 
 await test("a tool that throws does not kill the run", async () => {
-  const store = createStore(memoryBackend());
-  const model = scriptedModel([
-    '{"tool":"storage_get","args":{}}',                       // missing key -> handler throws
-    '{"final":"handled the error"}',
-  ]);
-  const out = await runAgent({ task: "x", model, store, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t5" });
+  const { store, actions, policy } = stack();
+  const model = scriptedModel(['{"tool":"recall","args":{"key":42}}', '{"final":"handled the error"}']);
+  const out = await runAgent({ task: "x", model, store, actions, policy, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t7" });
   assert.equal(out.status, "ok");
   assert.equal(out.steps, 2);
 });
 
-await test("step budget stops a looping model and says so", async () => {
-  const store = createStore(memoryBackend());
-  const model = scriptedModel(['{"tool":"storage_list","args":{}}']);   // loops forever
+await test("the step budget stops a looping model and says so", async () => {
+  const { store, actions, policy } = stack();
+  const model = scriptedModel(['{"tool":"list_actions","args":{}}']);
   const out = await runAgent({
-    task: "x", model, store, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t6",
+    task: "x", model, store, actions, policy, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t8",
     limits: { maxSteps: 4, maxMs: 60_000, maxToolMs: 5_000 },
   });
   assert.equal(out.status, "max_steps");
   assert.equal(out.steps, 4);
-  const j = await store.readJournal("t6");
-  assert.equal(j[j.length - 1].type, "stop");
-  assert.equal(j[j.length - 1].reason, "step budget");
+  const journal = await store.readJournal("t8");
+  assert.equal(journal[journal.length - 1].type, "stop");
+  assert.equal(journal[journal.length - 1].reason, "step budget");
 });
 
 await test("model failures are reported, not thrown at the caller", async () => {
-  const store = createStore(memoryBackend());
+  const { store, actions, policy } = stack();
   const model = { name: "broken", complete: async () => { throw new Error("connection refused"); } };
-  const out = await runAgent({ task: "x", model, store, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t7" });
+  const out = await runAgent({ task: "x", model, store, actions, policy, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t9" });
   assert.equal(out.status, "model_error");
   assert.match(out.error, /connection refused/);
 });
 
-await test("the conversation handed to the model carries tool results back", async () => {
-  const store = createStore(memoryBackend());
-  const model = scriptedModel(['{"tool":"storage_set","args":{"key":"a","value":42}}', '{"final":"done"}']);
-  await runAgent({ task: "x", model, store, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t8" });
-  const secondCall = model.seen[1];
-  assert.ok(secondCall >= 4, `second model call should include system+task+assistant+tool result, got ${secondCall}`);
+await test("a fresh run resets the autonomy quota", async () => {
+  const { store, actions, policy } = stack({ policyOverrides: { autoAllow: ["POST *"], maxAutoPerRun: 1 } });
+  const model = scriptedModel([
+    '{"tool":"api_request","args":{"url":"https://api.example.com/a","method":"POST","body":{},"rationale":"first"}}',
+    '{"tool":"api_request","args":{"url":"https://api.example.com/b","method":"POST","body":{},"rationale":"second"}}',
+    '{"final":"one went, one waited"}',
+  ]);
+  const out = await runAgent({ task: "x", model, store, actions, policy, fetchImpl: OK_FETCH, isAllowed: allow, runId: "t10" });
+  assert.equal(out.status, "ok");
+  assert.equal((await actions.pending()).length, 1, "the second action exceeded the per-run quota and queued");
+  assert.equal((await actions.autonomous()).length, 1);
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

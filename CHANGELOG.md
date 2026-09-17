@@ -4,12 +4,46 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-09-17
+
+Renamed to **Ningaui**, reframed around APIs, and the gate became a setting.
+
+### Added
+- **Earned autonomy.** Every action belongs to a class (`POST api.example.com/orders/{id}`),
+  and each class has a level: `confirm` (default), `auto`, or `deny`. A class is promoted
+  only by its record — a minimum number of approvals plus a clean stretch with no declines
+  and no apply errors. `core/policy.js` holds the ledger, the thresholds and the quotas.
+- **Revocation.** One decline, one apply error or one revert drops the class back to
+  `confirm` immediately and starts a cooldown. `revoke all` in the panel returns everything
+  to `confirm` in one click.
+- **Quotas**, applied even to granted autonomy: 20 autonomous actions per run, 30 per hour.
+  Hitting a quota falls back to `confirm` rather than failing.
+- **Revert**, from the panel: sandbox actions restore the previous value, policy actions
+  restore the level, API actions record the pre-apply state and mark the action reverted.
+- `request_autonomy` — the agent can ask for trust on a class, but only a human can grant it.
+- An **Autonomy** section in the panel: per-class counters, level dropdowns, an
+  always-confirm pattern list, and the master switch.
+
+### Changed
+- The tool surface is API-first: `api_read`, `api_request`, `remember`, `recall`,
+  `list_actions`, `request_autonomy`, `finish`. The sandbox is now the agent's own memory
+  rather than the headline, and it never needs approval.
+- `proposals.js` became `actions.js`: one record type for both paths, with a `mode` field
+  saying which one applied.
+- `proposals.test.mjs` became `actions.test.mjs`; `policy.test.mjs` is new. 59 checks total.
+- A pre-flight refusal (an allowlist that changed under a queued action) now leaves the
+  action pending instead of consuming the approval.
+
+### Removed
+- `propose_storage_change`, `propose_api_change`, `list_proposals`, `storage_get`,
+  `storage_list`, and the assumption that every write needs a human.
+
 ## [0.4.0] — 2026-09-16
 
 Named. Documented. Ready to publish.
 
 ### Added
-- The name **Kowari** and a mascot drawn from one shape list
+- The name **Ningaui** and a mascot drawn from one shape list
   (`assets/mascot.py`) that emits both the SVG and the extension PNG icons.
 - `docs/` — architecture, model protocol, the approval gate, cross-browser notes
   and the mascot's origins.

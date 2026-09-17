@@ -2,18 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Kowari</title>
+<title>Ningaui</title>
 <style>
-  :root{--bg:#0c0f12;--panel:#141a1f;--line:#26313a;--text:#e7edf1;--dim:#8ea0ac;--ok:#4ec97a;--warn:#e2622c;--accent:#e0b041}
+  :root{--bg:#0c0f12;--panel:#141a1f;--line:#26313a;--text:#e7edf1;--dim:#8ea0ac;--ok:#4ec97a;--warn:#e2622c;--accent:#e0b041;--blue:#4e9bd1}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
   header{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
-  header img{flex:0 0 auto} header h1{flex:1}
-  h1{font-size:14px;margin:0;letter-spacing:-.2px}
+  header img{flex:0 0 auto} header h1{flex:1;font-size:14px;margin:0;letter-spacing:-.2px}
   h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:14px 0 6px}
   .state{font-size:11px;padding:2px 7px;border-radius:10px;background:#1d262d;color:var(--dim)}
   .state.running{background:#2b2416;color:var(--accent)}
-  .state.done,.state.awaiting_approval{background:#14281c;color:var(--ok)}
+  .state.done,.state.awaiting_decision{background:#14281c;color:var(--ok)}
   .state.error,.state.model_error,.state.interrupted{background:#2b1713;color:var(--warn)}
   section{padding:8px 12px;border-bottom:1px solid var(--line)}
   label{display:block;font-size:11px;color:var(--dim);margin:8px 0 4px;text-transform:uppercase;letter-spacing:.05em}
@@ -22,7 +21,7 @@
   button.ghost{background:transparent;color:var(--dim);border:1px solid var(--line)}
   button.mini{padding:3px 8px;font-size:11px;font-weight:500;margin:0 0 0 6px}
   .row{display:flex;gap:8px}.row button{flex:1}
-  #transcript,#store{max-height:220px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+  #transcript,#store,#recent{max-height:200px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
   .line{padding:2px 0;border-bottom:1px dotted #1e272e;word-break:break-word;white-space:pre-wrap}
   .line.tool_call{color:var(--accent)} .line.tool_result{color:var(--dim)}
   .line.final,.line.ok{color:var(--ok)} .line.warn,.line.model_error,.line.parse_error{color:var(--warn)}
@@ -34,16 +33,21 @@
   .prop.sel{border-color:var(--accent);background:#171d22}
   .prow{font-size:11.5px} .prat{font-size:11.5px;margin-top:2px}
   .pdiff{font-size:11px;color:var(--dim);margin-top:3px;font-family:ui-monospace,Menlo,monospace;word-break:break-word}
+  .pwhy{font-size:10.5px;margin-top:2px}
   .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
   .chip{padding:3px 8px;font-size:11px;font-weight:500;background:transparent;color:var(--dim);border:1px solid var(--line);border-radius:10px;margin:0}
   .chip:hover{color:var(--text);border-color:var(--accent)}
+  .trow{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px dotted #1e272e}
+  .tname{flex:1;font-size:11.5px;word-break:break-word}
+  .tname .dim{display:block;font-size:10.5px}
+  .tlevel{width:auto;padding:3px 6px;font-size:11px}
   footer{padding:10px 12px;color:var(--dim);font-size:11px}
 </style>
 </head>
 <body>
 <header>
   <img src="icons/icon-32.png" alt="" width="22" height="22" style="border-radius:6px">
-  <h1>Kowari</h1>
+  <h1>Ningaui</h1>
   <span id="state" class="state idle">idle</span>
 </header>
 
@@ -56,8 +60,16 @@
 </section>
 
 <section>
+  <h2>Autonomy <span id="autostate" class="state idle">…</span>
+    <button id="autotoggle" class="mini ghost">toggle</button>
+    <button id="revokeall" class="mini ghost">revoke all</button></h2>
+  <div id="trust"></div>
+  <p class="note">Nothing is autonomous until it is earned: the class must accumulate approvals with no declines and no apply errors. One decline, one error or one revert revokes it immediately. Setting a level here by hand outranks the earned one.</p>
+</section>
+
+<section>
   <label for="task">Task</label>
-  <textarea id="task" rows="3" placeholder="Read the current state, then propose what should change."></textarea>
+  <textarea id="task" rows="3" placeholder="Read the order queue through the API and fix anything that is stuck."></textarea>
   <div class="row">
     <button id="run">Run</button>
     <button id="stop" class="ghost">Stop</button>
@@ -65,7 +77,7 @@
 </section>
 
 <section>
-  <h2>Proposals to review (<span id="pendingcount">0</span>)<button id="approveAllStorage" class="mini ghost">approve all storage</button><button id="clearDecided" class="mini ghost">clear decided</button></h2>
+  <h2>Awaiting your decision (<span id="pendingcount">0</span>)<button id="approveAllStore" class="mini ghost">approve sandbox + policy</button><button id="clearDecided" class="mini ghost">clear decided</button></h2>
   <div id="review"></div>
   <label for="reason">Reason — used when you decline; the agent reads it next run</label>
   <input id="reason" placeholder="why not">
@@ -77,7 +89,8 @@
     <button class="chip" data-reason="too risky">too risky</button>
   </div>
   <p class="note">Keys: <b>↑/↓</b> select · <b>a</b> approve · <b>d</b> decline with the reason · <b>s</b> skip · <b>r</b> refresh</p>
-  <div id="decided"></div>
+  <h2>Applied and declined</h2>
+  <div id="recent"></div>
 </section>
 
 <section>
@@ -86,7 +99,7 @@
 </section>
 
 <section>
-  <h2>Agent storage (<span id="storecount">0</span>)<button id="refresh" class="mini ghost">refresh</button><button id="clear" class="mini ghost">clear</button></h2>
+  <h2>Sandbox (<span id="storecount">0</span>)<button id="refresh" class="mini ghost">refresh</button><button id="clear" class="mini ghost">clear</button></h2>
   <div id="store"></div>
 </section>
 
@@ -103,15 +116,19 @@
   <input id="model" placeholder="e.g. qwen3, or a private model id">
   <label for="apiKey">API key — stored locally, sent only to your endpoint</label>
   <input id="apiKey" type="password" placeholder="leave empty for local models">
-  <label for="allowlist">Allowed URL prefixes — one per line; the only endpoints the agent may reach</label>
+  <label for="allowlist">Allowed URL prefixes — one per line; the only APIs the agent may reach</label>
   <textarea id="allowlist" rows="3"></textarea>
+  <label for="minapprovals">Approvals before a class is eligible for autonomy</label>
+  <input id="minapprovals" type="number" min="1" max="200" value="8">
+  <label for="alwaysconfirm">Never autonomous — class patterns, one per line (e.g. <code>DELETE *</code>)</label>
+  <textarea id="alwaysconfirm" rows="2"></textarea>
   <label for="persona">Persona (optional)</label>
-  <input id="persona" placeholder="a librarian who keeps careful notes">
+  <input id="persona" placeholder="a careful operator of other people's systems">
   <button id="save">Save settings</button>
   <p class="note">host permissions declared in the manifest:<br><code id="hosts"></code></p>
 </section>
 
-<footer>seven tools · one loop · no page access · no writes without your approval</footer>
+<footer>seven tools · API first · autonomy is earned, and revocable in one click</footer>
 <script type="module" src="panel.js"></script>
 </body>
 </html>

@@ -33,5 +33,15 @@ Deliberately little, and it is worth being precise about it:
   model cannot change anything on its own. It is not a sandbox against a hostile
   extension you installed yourself.
 - **Prompt injection is real.** Anything the agent reads through `api_read` can try
-  to steer it. The gate is the mitigation: a steered agent can only propose, and
-  you see the rationale and the before/after preview before anything happens.
+  to steer it. Two things limit the damage: an action on a `confirm` class can only propose
+  — you see the rationale and the preview before anything happens — and an action on an
+  `auto` class is journalled, quotad, and reversible from the panel.
+- **Autonomy widens the blast radius, on purpose.** A class that has earned `auto` acts
+  without asking. The mitigations are structural: nothing is autonomous by default, quotas
+  cap autonomous actions per run and per hour, one decline, error or revert revokes
+  immediately, `deny` is available for endpoints where a mistake is unacceptable, and
+  `revoke all` returns everything to `confirm` in one click. If an endpoint can move money
+  or delete data, put it in `alwaysConfirm` — the pattern list exists for exactly that.
+- **The autonomy ledger is client-side too.** Levels, counters and cooldowns live in browser
+  storage. Someone with developer tools can raise a level. Treat the ledger as a guard
+  against a confused agent, not against a hostile local actor.

@@ -21,7 +21,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Kowari version
+      label: Ningaui version
       description: From the manifest, or the zip filename.
       placeholder: "0.4.0"
     validations:

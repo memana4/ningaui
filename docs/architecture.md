@@ -7,31 +7,37 @@ One agent loop, one tool surface, one queue, two browser shells.
 ```
                  ┌───────────────────────────────────────────┐
                  │  panel.js  (side panel / sidebar)         │
-                 │  run · transcript · review · settings     │
+                 │  run · transcript · queue · autonomy      │
                  └───────────────┬───────────────────────────┘
                      runtime.sendMessage  │  runtime.connect("panel")
                                          ▼
                  ┌───────────────────────────────────────────┐
                  │  bg.js  (service worker / event page)     │
-                 │  run control · approvals · status         │
+                 │  run control · decisions · policy · status│
                  └───────┬───────────────────────┬───────────┘
                          ▼                       ▼
               ┌──────────────────┐    ┌──────────────────────┐
-              │  agent.js        │    │  proposals.js        │
-              │  the loop        │───▶│  the queue           │
+              │  agent.js        │    │  policy.js           │
+              │  the loop        │    │  class → level       │
+              └────────┬─────────┘    │  earned autonomy     │
+                       ▼              │  quotas, revocation  │
+              ┌──────────────────┐    └───────┬──────────────┘
+              │  tools.js        │            ▼
+              │  api_read        │    ┌──────────────────────┐
+              │  api_request ────┼───▶│  actions.js          │
+              │  remember/recall │    │  auto: apply now     │
+              │  list_actions    │    │  confirm: queue      │
+              │  request_autonomy│    │  decide · revert     │
+              │  finish          │    │  audit:log           │
               └────────┬─────────┘    └───────┬──────────────┘
-                       ▼                      ▼  (on your decision)
+                       ▼                      ▼
               ┌──────────────────┐    ┌──────────────────────┐
-              │  tools.js        │    │  store.js            │
-              │  4 reads, 2      │    │  agent:<key>         │
-              │  proposals,      │    │  journal:<run>       │
-              │  finish          │    │  proposal:<id>       │
-              └────────┬─────────┘    │  audit:log           │
-                       ▼              └──────────────────────┘
-              ┌──────────────────┐
-              │  model.js        │
-              │  built-in / HTTP │
-              └──────────────────┘
+              │  model.js        │    │  store.js            │
+              │  built-in / HTTP │    │  agent:<key>         │
+              └──────────────────┘    │  journal:<run>       │
+                                      │  action:<id>         │
+                                      │  trust:<class>       │
+                                      └──────────────────────┘
 ```
 
 `core/api.js` sits under all of it and is the only file that knows which browser is
@@ -59,12 +65,32 @@ recoverable event rather than a bug.
 
 | key | contents | written when |
 |---|---|---|
-| `agent:<key>` | the agent's own sandboxed store | on an approved storage proposal |
+| `agent:<key>` | the agent's sandboxed memory | on `remember`, or an approved store action |
 | `journal:<runId>` | one run's event log, capped at 500 entries | after every step |
-| `proposal:<id>` | one proposal, its preview, its decision and reason | on create, then on decide |
-| `audit:log` | append-only list of creations and decisions, capped at 1000 | alongside every proposal change |
-| `config` | backend, endpoint, key, allowlist, persona | when you save settings |
+| `action:<id>` | one action: class, mode, preview, decision, reason, result | on submit, then on apply or decide |
+| `trust:<class>` | the autonomy ledger for one class | on every decision and application |
+| `audit:log` | append-only list of actions, decisions, policy changes, reverts, capped at 1000 | alongside every change |
+| `autolog` | timestamps of autonomous applications in the last hour | on every autonomous application |
+| `config` | backend, endpoint, key, allowlist, persona, policy | when you save settings |
 | `status` | current run state for the panel | on every state transition |
+
+## How an action flows
+
+```
+tool call: api_request
+      │
+      ▼
+policy.decide(action) ──▶ deny ──── refused, audit only, nothing queued
+      │
+      ├──▶ confirm ──▶ apply() on your decision ──▶ execute() ──▶ world
+      │                    │                            │
+      │                    └── pre-flight refusal ──────┘  (stays pending, reason attached)
+      │
+      └──▶ auto ──▶ apply() immediately ──▶ execute() ──▶ world
+                        │                      │
+                        └── success or failure ─┴──▶ policy.noteApplied()
+                                                     (failure revokes the class)
+```
 
 ## Surviving termination
 
@@ -101,8 +127,13 @@ models otherwise loop until the step budget kills them.
 | steps per run | 12 | `DEFAULT_LIMITS` in `agent.js` |
 | wall clock per run | 120 s | same |
 | per tool call | 20 s | same |
-| proposals per run | 12 | `tools.js` |
-| pending proposals | 200 | `proposals.js` |
+| actions per run (any mode) | 12 | `tools.js` |
+| pending actions | 200 | `actions.js` |
+| autonomous actions per run | 20 | `DEFAULT_POLICY` |
+| autonomous actions per hour | 30 | `DEFAULT_POLICY` |
+| approvals before autonomy | 8 | `DEFAULT_POLICY` |
+| clean stretch before autonomy | 72 h | `DEFAULT_POLICY` |
+| cooldown after a revocation | 24 h | `DEFAULT_POLICY` |
 | stored value size | 256 kB | `store.js` |
 | API response kept | 20 kB | `tools.js` |
 

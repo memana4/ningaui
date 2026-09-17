@@ -4,21 +4,23 @@
 
 ```bash
 git clone <your fork>
-cd kowari
-python3 build.py          # writes dist/chrome and dist/firefox
-node test/loop.test.mjs
-node test/proposals.test.mjs
+cd ningaui
+python3 build.py           # writes dist/chrome and dist/firefox
+node test/loop.test.mjs    # the loop and the protocol
+node test/actions.test.mjs # the two paths through the gate
+node test/policy.test.mjs  # earned autonomy, quotas, revocation
 node test/crossbrowser.test.mjs
 ```
 
-`npm test` runs the build and all three suites. There are no dependencies to
-install, in either language.
+`npm test` runs the build and all four suites. There are no dependencies to install, in
+either language, apart from Pillow if you regenerate the mascot.
 
 ## The rules that matter here
 
-1. **No direct write tools.** The agent's tool surface is reads plus proposals. A
-   pull request that adds a tool that changes state without a human decision will
-   be declined, however convenient it is. The gate is the product.
+1. **Every write goes through policy.** No tool may change the world directly: state
+   changes are submitted to `actions.js`, which asks `policy.js` for a verdict. A pull
+   request that adds a tool which acts first and records afterwards will be declined,
+   however convenient it is. Autonomy is a policy outcome, never a tool's own decision.
 2. **Platform differences go in `core/api.js`.** If you find yourself writing
    `if (isFirefox)` anywhere else, the adapter is missing a method — add it there
    and give both engines a path.

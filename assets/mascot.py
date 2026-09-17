@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Draw the Kowari mascot.
+"""Draw the Ningaui mascot.
 
-One shape list, two outputs: assets/kowari-icon.svg for humans and browsers, and the PNG
+One shape list, two outputs: assets/ningaui-icon.svg for humans and browsers, and the PNG
 sizes the extensions need (16/32/48/128). Pillow rasterizes by supersampling, because a
 mascot that only looks right at 512 px is not a mascot.
 
-The animal: a kowari is a small, big-eyed, crested-tailed carnivorous marsupial from the
+The animal: a ningaui is a small, big-eyed, crested-tailed carnivorous marsupial from the
 Australian outback. The crest on the tail is the give-away, so it gets the dark brush tip.
 The harness is the point of the project: the animal works, you hold the leash, and nothing
 it proposes happens until you decide.
@@ -127,8 +127,8 @@ def densify(pts, steps=20):
 
 def to_svg() -> str:
     parts = [
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Kowari">',
-        "  <title>Kowari</title>",
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Ningaui">',
+        "  <title>Ningaui</title>",
         '  <rect width="128" height="128" rx="26" fill="#141A1F"/>',
         '  <rect x="3" y="3" width="122" height="122" rx="23" fill="none" stroke="#243039" stroke-width="1"/>',
     ]
@@ -152,13 +152,13 @@ if __name__ == "__main__":
     root = pathlib.Path(__file__).resolve().parent.parent
     assets = root / "assets"
     assets.mkdir(exist_ok=True)
-    (assets / "kowari-icon.svg").write_text(to_svg())
+    (assets / "ningaui-icon.svg").write_text(to_svg())
     for size in (16, 32, 48, 128, 512):
-        to_png(size).save(assets / f"kowari-{size}.png")
+        to_png(size).save(assets / f"ningaui-{size}.png")
     # the extension bundles need the icons next to the manifest
     for target in ("chrome", "firefox"):
         dest = root / "platform" / target / "icons"
         dest.mkdir(exist_ok=True)
         for size in (16, 32, 48, 128):
             to_png(size).save(dest / f"icon-{size}.png")
-    print("wrote assets/kowari-icon.svg, kowari-{16,32,48,128,512}.png and both icons/ dirs")
+    print("wrote assets/ningaui-icon.svg, ningaui-{16,32,48,128,512}.png and both icons/ dirs")

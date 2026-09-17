@@ -1,9 +1,9 @@
 {
-  "name": "kowari",
-  "version": "0.4.0",
+  "name": "ningaui",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
-  "description": "A tiny browser-agent harness with a human approval gate on every write.",
+  "description": "A small browser agent for API work, with autonomy it has to earn.",
   "license": "MIT",
   "keywords": [
     "agent",
@@ -13,7 +13,9 @@
     "chrome",
     "firefox",
     "human-in-the-loop",
-    "approval"
+    "approval",
+    "autonomy",
+    "policy"
   ],
   "engines": {
     "node": ">=20"
@@ -21,9 +23,10 @@
   "scripts": {
     "build": "python3 build.py",
     "mascot": "python3 assets/mascot.py",
-    "test": "python3 build.py && node test/loop.test.mjs && node test/proposals.test.mjs && node test/crossbrowser.test.mjs",
+    "test": "python3 build.py && node test/loop.test.mjs && node test/actions.test.mjs && node test/policy.test.mjs && node test/crossbrowser.test.mjs",
     "test:loop": "node test/loop.test.mjs",
-    "test:proposals": "node test/proposals.test.mjs",
+    "test:actions": "node test/actions.test.mjs",
+    "test:policy": "node test/policy.test.mjs",
     "test:crossbrowser": "python3 build.py && node test/crossbrowser.test.mjs"
   }
 }

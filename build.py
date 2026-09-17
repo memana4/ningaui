@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parent
 CORE = ROOT / "core"
 PLATFORM = ROOT / "platform"
 DIST = ROOT / "dist"
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 
 
 def validate(target: str, manifest: dict) -> list[str]:
@@ -94,7 +94,7 @@ def build(target: str) -> Path:
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
     files = sorted(str(p.relative_to(out)) for p in out.rglob("*") if p.is_file())
-    zip_path = ROOT / f"kowari-{target}-{VERSION}.zip"
+    zip_path = ROOT / f"ningaui-{target}-{VERSION}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         for name in files:
             z.write(out / name, name)
