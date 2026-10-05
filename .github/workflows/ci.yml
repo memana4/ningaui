@@ -24,7 +24,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install Pillow (mascot rasterisation)
-        run: python -m pip install --disable-pip-version-check pillow
+        # Pinned: the drift check compares regenerated PNGs byte-for-byte, so the
+        # rasteriser version must match the one the committed assets were made with.
+        run: python -m pip install --disable-pip-version-check "pillow==12.3.0"
 
       - name: Validate the manifests and build every bundle
         run: python3 build.py
