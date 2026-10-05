@@ -13,12 +13,12 @@ eyes, active at night, entirely at home in country that would kill most things t
 size. It suits this project for a mundane reason as much as a charming one: it goes out,
 works alone, and comes back with what it decided to carry.
 
-Ningaui is a browser extension that runs a small language-model agent against **your APIs**.
-Its whole environment is a sandboxed memory and an allow-list of endpoints. No pages, no
-tabs, no cookies, no files.
+Ningaui is a browser extension — or a single bookmarklet — that runs a small language-model
+agent against **your APIs**. Its whole environment is a sandboxed memory and an allow-list of
+endpoints: no pages, no tabs, no cookies, no files.
 
 Seven tools, one loop, no dependencies, no build toolchain beyond a Python script that
-copies files and refuses to build a broken manifest.
+copies files, bundles the bookmarklet, and refuses to build a broken manifest.
 
 ## Autonomy is earned, not assumed
 
@@ -64,6 +64,18 @@ Firefox will not permanently load an unsigned extension in a release build. Pick
 3. **Signed, permanent** — `web-ext sign` against AMO as an *unlisted* add-on.
 
 Then open the panel: the toolbar button on Chrome, **View → Sidebar → Ningaui** on Firefox.
+
+### Bookmarklet (no install)
+
+The same harness runs as one self-contained bookmark when installing an extension is not
+an option — drag it from the [install page](https://memana4.github.io/ningaui/), or build
+locally (`python3 build.py`) and open `dist/bookmarklet/install.html`. Clicking the
+bookmark mounts the panel on the current page; clicking again hides or shows it. The
+install URL is gzip-packed (~31 kB) because Firefox truncates bookmarks over ~64 kB.
+
+Bookmarklet mode trades the extension's isolation for zero-install: the page's CORS rules
+gate every API call, storage is per-site, and the page's own scripts can see what the
+harness saves — see [docs/bookmarklet.md](docs/bookmarklet.md) for the full picture.
 
 ### Configure
 
@@ -117,25 +129,27 @@ core/               platform-agnostic — the whole agent
   store.js            the sandbox: key-value memory + run journal
   model.js            built-in model adapter, OpenAI-compatible adapter
   api.js              the adapter that hides every browser difference
-  bg.js               background host — same file for both engines
-  panel.js/.html      one panel document for side panel and sidebar
+  bg.js               host entry point — same file for every target
+  panel.js/.html      one panel document for side panel, sidebar and bookmarklet
 platform/chrome/      manifest.json + offscreen keepalive + icons
 platform/firefox/     manifest.json + icons
+bookmarklet/          shim host: the WebExtension surface over page globals, plus the mount
 assets/               mascot: one shape list, SVG and PNGs
-build.py              assembles and validates dist/chrome and dist/firefox
-test/                 59 checks across four suites
+build.py              assembles and validates dist/chrome, dist/firefox and dist/bookmarklet
+install.html          the drag-to-install page published on GitHub Pages
+test/                 70 checks across five suites
 ```
 
 More detail: [autonomy](docs/autonomy.md) · [architecture](docs/architecture.md) ·
 [protocol](docs/protocol.md) · [cross-browser](docs/cross-browser.md) ·
-[the mascot](docs/mascot.md).
+[the bookmarklet](docs/bookmarklet.md) · [the mascot](docs/mascot.md).
 
 ## Development
 
 ```bash
-python3 build.py          # both bundles, validated
+python3 build.py          # all bundles, validated, plus the packed bookmarklet
 python3 assets/mascot.py  # regenerate the SVG and icons
-npm test                  # build + all four suites
+npm test                  # build + all five suites
 ```
 
 No browser, no network and no API key is needed: the core takes its storage, fetch, policy
@@ -153,6 +167,10 @@ background host against fake Chrome-shaped and Firefox-shaped APIs.
 - On Firefox, closing the sidebar mid-run can let the background page be reaped. Every step
   is already on disk and a sweep marks the run `interrupted`, so nothing is silently lost,
   but the run stops there.
+- **Bookmarklet mode trades isolation for zero-install.** The bundle runs in the page: the
+  site's own scripts share its storage, its CORS rules gate every call, and strict-CSP
+  sites refuse bookmarklets entirely. [docs/bookmarklet.md](docs/bookmarklet.md) has the
+  details.
 - One agent. No planner, no subagents, no MCP. The smallness is the feature.
 
 See [SECURITY.md](SECURITY.md) for the full threat model.

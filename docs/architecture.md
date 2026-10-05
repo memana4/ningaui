@@ -2,7 +2,8 @@
 
 ## The shape of it
 
-One agent loop, one tool surface, one queue, two browser shells.
+One agent loop, one tool surface, one queue — two extension shells, and a bookmarklet
+that runs the same core inside an ordinary page.
 
 ```
                  ┌───────────────────────────────────────────┐
@@ -50,7 +51,7 @@ differences, left unmanaged, produce bugs that look like logic errors. They are 
 into one adapter, built as a factory so it can be constructed twice in a test:
 
 ```js
-const api = createApi(globalThis.browser?.runtime ? globalThis.browser : globalThis.chrome);
+const api = createApi(pickHost());   // bookmarklet shim → browser → chrome
 ```
 
 What the adapter owns: the storage handle, whether an offscreen document exists, how to
@@ -139,3 +140,17 @@ models otherwise loop until the step budget kills them.
 
 They are constants on purpose. A harness whose limits are configurable is a harness whose
 limits are wrong in somebody's deployment.
+
+## The third shell: the bookmarklet
+
+The bookmarklet replaces the extension API with a shim: `bookmarklet/shim.js` puts page
+`localStorage` behind `storage.local`, an in-page bus behind `runtime`, and reports
+permissions as granted — because in a page, CORS is the permission model. The manifest's
+panel surface is replaced by a shadow-root mount (`bookmarklet/mount.js`). `build.py`
+bundles shim, core and panel into one classic script, packed with gzip so the bookmark URL
+stays under Firefox's ~64 kB limit.
+
+The core is unchanged: the same `bg.js` registers the same handlers, the same panel
+renders the same document. What remains different is environmental — per-site storage,
+no host permissions, page-context trust, CSP limits — and is kept in
+[bookmarklet.md](bookmarklet.md).

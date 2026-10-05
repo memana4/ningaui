@@ -45,3 +45,22 @@ Deliberately little, and it is worth being precise about it:
 - **The autonomy ledger is client-side too.** Levels, counters and cooldowns live in browser
   storage. Someone with developer tools can raise a level. Treat the ledger as a guard
   against a confused agent, not against a hostile local actor.
+
+## Bookmarklet mode
+
+The bookmarklet build runs the same harness **inside the page you click it on**, which
+changes what is and is not protected:
+
+- There is no extension boundary. The site's own scripts share the page's JavaScript
+  context and its `localStorage`: they can read everything the harness has saved —
+  settings (including the API key), sandbox, journals — and can tamper with the agent
+  while it runs. Click it on sites you trust, and prefer a local endpoint with no key.
+- There are no host permissions; the page's CORS rules are the gate. An endpoint that
+  does not answer the page's origin fails as a tool error rather than being silently
+  allowed.
+- The allowlist is unchanged and still enforced in `actions.js`/`tools.js` — but it is
+  now the *only* gate, so keep it tight.
+- Pages with a strict `script-src` CSP refuse bookmarklets outright, and inline `style`
+  may be blocked on some sites, leaving the panel unstyled.
+- Storage is per-site (`localStorage`) and namespaced under `ningaui:`; the harness scopes
+  its own keys and never reads the page's.

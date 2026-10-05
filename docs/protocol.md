@@ -71,7 +71,7 @@ outcome. It returns exactly what happened:
 ## 3. The message protocol
 
 Panel → background, over `runtime.sendMessage`. The listener replies asynchronously
-(`return true`), which both engines honour.
+(`return true`), which every host honours.
 
 | type | payload | reply |
 |---|---|---|

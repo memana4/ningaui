@@ -4,6 +4,40 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-10-05
+
+A third target: the same harness as a bookmarklet, for when installing an extension is
+not an option.
+
+### Added
+- **The bookmarklet build.** `build.py` now emits `dist/bookmarklet/` — a self-contained
+  classic-script bundle (shim host + the whole core + the panel), an install page, and the
+  packed install URL. The panel mounts into a shadow root on the current page; the page's
+  CORS rules become the permission model.
+- **`bookmarklet/shim.js`** — the WebExtension surface the core uses (`storage.local`,
+  `runtime` messages and ports, `permissions`, `getManifest`) over `localStorage` and an
+  in-page bus, so `bg.js` and the panel run unmodified inside a page.
+- **`bookmarklet/mount.js`** — mounts the panel in a shadow root (page styles stay out,
+  panel styles stay in) and makes a second click toggle it instead of booting twice.
+- **`test/bookmarklet.test.mjs`** — drives the real bundle in a `vm` context through the
+  real bus: runs, approvals, declines, allowlist refusals, storage namespacing, the
+  re-run guard, and a pack/unpack round-trip of the install URL.
+- A GitHub Pages workflow publishing the drag-to-install page.
+- The install URL is gzip-packed (~31 kB) because Firefox truncates bookmark URLs around
+  64 kB; the readable bundle ships alongside it.
+
+### Changed
+- `api.js`: `pickHost()` prefers the bookmarklet shim over the page's `window.chrome`;
+  `createApi` reports a `bookmarklet` host name and never reads the UA for it.
+- `panel.js/.html`: every lookup goes through a root element, so the same panel renders in
+  an extension document or a shadow root; bookmarklet-specific hint text where it matters.
+- `tools.js`: the pre-apply preview read is now allowlist-gated like every other request.
+- CI runs the new suite; the bookmarklet zip joins the release artifacts.
+- README, CONTRIBUTING and the docs cover the third target.
+
+### Removed
+- `core/proposals.js`, the pre-rename leftover — nothing imported it.
+
 ## [0.5.0] — 2026-09-17
 
 Renamed to **Ningaui**, reframed around APIs, and the gate became a setting.

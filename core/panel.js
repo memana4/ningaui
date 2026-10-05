@@ -4,10 +4,14 @@
 // Three jobs: run the agent, decide what it is waiting on you for, and manage how much
 // autonomy it has earned.
 
-import { createApi, originsFor } from "./api.js";
+import { createApi, pickHost, originsFor } from "./api.js";
 
-const api = createApi(globalThis.browser?.runtime ? globalThis.browser : globalThis.chrome);
-const $ = (s) => document.querySelector(s);
+const api = createApi(pickHost());
+// The extension renders this file in its own document; the bookmarklet mounts it inside a
+// shadow root under __NINGAUI_ROOT__. Every lookup goes through the root, so both work.
+const root = globalThis.__NINGAUI_ROOT__ || document;
+const $ = (s) => root.querySelector(s);
+const mk = (tag) => (root.ownerDocument || document).createElement(tag);
 let queue = { pending: [], recent: [], audit: [] };
 let trust = { classes: [], autonomous: [], enabled: true };
 let sel = 0;
@@ -17,7 +21,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<"
 const short = (o, n = 200) => esc(JSON.stringify(o)?.slice(0, n) ?? "");
 
 function line(text, cls = "") {
-  const el = document.createElement("div");
+  const el = mk("div");
   el.className = "line " + cls;
   el.textContent = text;
   $("#transcript").appendChild(el);
@@ -145,7 +149,7 @@ async function decide(decision) {
   await refreshAll();
 }
 
-document.addEventListener("keydown", (e) => {
+root.addEventListener("keydown", (e) => {
   if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return;
   if (e.key === "ArrowDown" || e.key === "j") { sel = Math.min(sel + 1, Math.max(0, queue.pending.length - 1)); renderQueue(); }
   else if (e.key === "ArrowUp" || e.key === "k") { sel = Math.max(0, sel - 1); renderQueue(); }
@@ -168,7 +172,7 @@ $("#clearDecided").addEventListener("click", async () => {
   await refreshAll();
 });
 
-document.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => { $("#reason").value = c.dataset.reason; }));
+root.querySelectorAll(".chip").forEach((c) => c.addEventListener("click", () => { $("#reason").value = c.dataset.reason; }));
 
 // ---- autonomy --------------------------------------------------------------
 function renderTrust() {
@@ -239,6 +243,9 @@ async function refreshEnv() {
   if (env.isFirefox && !env.builtInModel) {
     $("#modelhint").textContent = "Firefox has no built-in model: use the OpenAI-compatible backend below (Ollama or a private endpoint).";
   }
+  if (env.browser === "bookmarklet") {
+    $("#modelhint").textContent = "Bookmarklet mode: this page's CORS rules decide which endpoints answer, and anything saved here is visible to this site's own scripts — prefer local endpoints, or sites you trust.";
+  }
 }
 
 $("#grant").addEventListener("click", async () => {
@@ -254,7 +261,7 @@ async function refreshStorage() {
     || '<div class="line dim">empty</div>';
   $("#storecount").textContent = String(keys.length);
 }
-document.querySelector("#refresh")?.addEventListener("click", refreshStorage);
+$("#refresh")?.addEventListener("click", refreshStorage);
 
 $("#clear").addEventListener("click", async () => {
   const all = await api.storage.get(null);
@@ -275,7 +282,8 @@ async function loadConfig() {
   const pol = cfg.policy || {};
   $("#minapprovals").value = pol.minApprovals ?? 8;
   $("#alwaysconfirm").value = (pol.alwaysConfirm || []).join("\n");
-  $("#hosts").textContent = (api.runtime.getManifest().host_permissions || []).join("  ");
+  const hosts = api.runtime.getManifest()?.host_permissions || [];
+  $("#hosts").textContent = hosts.length ? hosts.join("  ") : "(bookmarklet mode: the page's CORS rules apply, not manifest permissions)";
 }
 
 $("#save").addEventListener("click", async () => {

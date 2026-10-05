@@ -1,18 +1,19 @@
-// Host entry point, shared by both browsers.
+// Host entry point, shared by every target: Chrome service worker, Firefox event page,
+// and the bookmarklet bundle, where it runs in the page itself.
 //
-// The only difference between the builds is the manifest: Chrome starts this file as a
+// For the extensions the only difference is the manifest: Chrome starts this file as a
 // service worker, Firefox starts it as an event page. Everything below is written for the
 // stricter of the two — every step, action and policy change is on disk before the next
 // begins, so a recycled worker loses the loop but never the record.
 
-import { createApi, originsFor } from "./api.js";
+import { createApi, pickHost, originsFor } from "./api.js";
 import { runAgent, DEFAULT_LIMITS } from "./agent.js";
 import { createStore } from "./store.js";
 import { createPolicy, DEFAULT_POLICY } from "./policy.js";
 import { createActions } from "./actions.js";
 import { pickModel } from "./model.js";
 
-const api = createApi(globalThis.browser?.runtime ? globalThis.browser : globalThis.chrome);
+const api = createApi(pickHost());
 
 const DEFAULTS = {
   backend: "nano",

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ningaui bookmarklet — install</title>
+<style>
+  :root{--bg:#0c0f12;--panel:#141a1f;--line:#26313a;--text:#e7edf1;--dim:#8ea0ac;--accent:#e0b041}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  main{max-width:680px;margin:0 auto;padding:48px 20px}
+  h1{font-size:22px;letter-spacing:-.2px}
+  h1 img{vertical-align:-6px;border-radius:8px;margin-right:8px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin:18px 0}
+  a.bm{display:inline-block;margin:6px 0;padding:10px 18px;background:var(--accent);color:#191308;font-weight:700;border-radius:8px;text-decoration:none;cursor:grab}
+  a.bm:active{cursor:grabbing}
+  .dim{color:var(--dim);font-size:13px}
+  code{color:var(--dim);font-size:13px;word-break:break-all}
+  textarea{width:100%;background:#101619;border:1px solid var(--line);color:var(--dim);border-radius:6px;font:12px/1.5 ui-monospace,Menlo,monospace;padding:8px}
+  button.mini{padding:4px 10px;font-size:12px;background:transparent;color:var(--dim);border:1px solid var(--line);border-radius:6px;cursor:pointer}
+  button.mini:hover{color:var(--text);border-color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Ningaui bookmarklet</h1>
+  <p>Everything the extension does — the agent loop, the sandbox, the action queue, the
+     earned-autonomy policy — packed into one self-contained bookmark. No install, no
+     permissions prompt: click it on any page you want the agent on.</p>
+
+  <div class="card">
+    <p><b>Drag this button to your bookmarks bar:</b></p>
+    <p><a id="drag" class="bm" href="#">Run Ningaui here</a></p>
+    <p class="dim" id="status">loading the packed bookmarklet…</p>
+    <p class="dim">If dragging is blocked: create a bookmark for any page, then paste the full
+       URL into its address field. <button id="copy" class="mini">copy URL</button></p>
+    <textarea id="url" readonly rows="4" onclick="this.select()"></textarea>
+  </div>
+
+  <p class="dim">This page loads <code>ningaui-bookmarklet.url.txt</code> — the packed bookmark —
+     and the readable bundle it unpacks is <code>ningaui-bookmarklet.js</code>. Running limits of
+     this mode — strict-CSP sites, CORS on API calls, per-site storage, and page-context trust —
+     are documented in <code>docs/bookmarklet.md</code>. For full-strength use (host permissions,
+     Chrome's built-in model, isolated context), install the extension:
+     <a href="https://github.com/memana4/ningaui/releases">bundles on the releases page</a>.</p>
+</main>
+<script>
+(async () => {
+  const drag = document.getElementById("drag");
+  const status = document.getElementById("status");
+  const urlBox = document.getElementById("url");
+  try {
+    const res = await fetch("./ningaui-bookmarklet.url.txt", { cache: "no-cache" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const url = (await res.text()).trim();
+    if (!url.startsWith("javascript:")) throw new Error("unexpected payload");
+    drag.href = url;
+    urlBox.value = url;
+    status.textContent = `ready — ${Math.round(url.length / 1024)} kB packed bookmark. Drag the button to your bookmarks bar.`;
+    document.getElementById("copy").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(url);
+        status.textContent = "URL copied — paste it into a new bookmark's address field.";
+      } catch (_) {
+        urlBox.select();
+        status.textContent = "copy was blocked — the URL is selected above, copy it manually.";
+      }
+    });
+  } catch (err) {
+    status.textContent = "could not load ningaui-bookmarklet.url.txt next to this page — use the published site, or open dist/bookmarklet/install.html from a local build";
+  }
+})();
+</script>
+</body>
+</html>

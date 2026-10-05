@@ -1,0 +1,46 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the bundles (the install page needs the packed URL)
+        run: python3 build.py
+
+      - name: Assemble the site
+        run: |
+          mkdir -p _site
+          cp install.html _site/index.html
+          cp dist/bookmarklet/ningaui-bookmarklet.url.txt _site/
+          cp dist/bookmarklet/ningaui-bookmarklet.js _site/
+          cp ningaui-chrome-*.zip ningaui-firefox-*.zip ningaui-bookmarklet-*.zip _site/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

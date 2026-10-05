@@ -9,10 +9,15 @@
 //   * the built-in model       — LanguageModel exists in Chrome, not in Firefox
 //   * host permissions         — revocable at any time in Firefox, so they must be
 //                                checked and re-requested rather than assumed
+//   * the bookmarklet           — a page-context shim host (bookmarklet/shim.js) exposing
+//                                this same surface over localStorage and an in-page bus
 //
 // createApi(host) takes the extension global so both shapes can be exercised in tests.
 
 export function pickHost() {
+  // A bookmarklet installs its own shim host before the core runs. It is checked first so
+  // the page's own window.chrome (present without extension APIs) can never win.
+  if (globalThis.__NINGAUI__?.host) return globalThis.__NINGAUI__.host;
   if (typeof globalThis.browser !== "undefined" && globalThis.browser?.runtime) return globalThis.browser;
   if (typeof globalThis.chrome !== "undefined" && globalThis.chrome?.runtime) return globalThis.chrome;
   return null;
@@ -26,7 +31,10 @@ export function createApi(host) {
              ports: new Set(), onPort: () => {} };
   }
 
-  const isFirefox = !host.offscreen && !!host.sidebarAction || /Firefox/i.test(globalThis.navigator?.userAgent || "");
+  // The bookmarklet shim marks itself; it is never one of the engines, whatever the UA says.
+  const isBookmarklet = host.__ningaui === "bookmarklet";
+  const isFirefox = !isBookmarklet &&
+    ((!host.offscreen && !!host.sidebarAction) || /Firefox/i.test(globalThis.navigator?.userAgent || ""));
   const ports = new Set();
   let offscreenOpen = false;
 
@@ -79,7 +87,7 @@ export function createApi(host) {
   };
 
   return {
-    name: isFirefox ? "firefox" : "chrome",
+    name: isBookmarklet ? "bookmarklet" : isFirefox ? "firefox" : "chrome",
     isFirefox,
     storage: host.storage.local,
     runtime: host.runtime,

@@ -61,7 +61,8 @@ install anywhere.
 
 - constructs the adapter against each and checks the mode it reports;
 - loads the **real** `core/bg.js` twice, once per host, and drives its message handlers
-  through `run`, `proposals`, `decide`, `permissions`, `env` and `keepalive`;
+  through `run`, `actions`, `decide`, `revert`, `clearDecided`, `journal`, `trust`,
+  `setLevel`, `revokeAll`, `setPolicy`, `permissions`, `env` and `keepalive`;
 - verifies the permission-refusal path that only Firefox can produce;
 - runs the loop, the action log and the policy engine on both and asserts the journals,
   the applied payloads and the autonomy view are identical;
@@ -69,3 +70,11 @@ install anywhere.
 
 Loading `bg.js` twice needs a cache-busting import (`?tag`) because it binds to
 `globalThis` at import time — each fake host gets a fresh module instance.
+
+## The bookmarklet
+
+The third target skips manifests entirely. `build.py` bundles the shim, the core and the
+panel into one classic script; `bookmarklet/` supplies the page-context host, and the same
+`bg.js` runs there because every difference is expressed through the same `createApi(host)`
+surface. The bookmarklet-specific behaviours — per-site storage, CORS as the permission
+model, the shadow-root mount — are documented in [bookmarklet.md](bookmarklet.md).

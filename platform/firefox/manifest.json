@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Ningaui",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "description": "A small browser agent for API work, with autonomy it has to earn.",
   "browser_specific_settings": {
     "gecko": {

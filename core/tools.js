@@ -54,7 +54,9 @@ export function createTools({ store, actions, policy, fetchImpl, isAllowed, cloc
       if (++actedThisRun > MAX_ACTIONS_PER_RUN) {
         throw new Error(`at most ${MAX_ACTIONS_PER_RUN} actions per run; finish and let the queue drain`);
       }
-      const pv = await preview(url, m);
+      // Reads for the preview are allowlist-gated too: an off-list URL must never be
+      // touched, not even for a before/after look. submit() refuses it right after anyway.
+      const pv = isAllowed(url) ? await preview(url, m) : null;
       const result = await actions.submit({
         runId, kind: "api", target: { url, method: m }, payload: body, rationale,
         preview: { ...(pv || {}), after: summarise(body) },
